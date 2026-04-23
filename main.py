@@ -1,14 +1,13 @@
 import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 app = FastAPI()
 
-# РАЗРЕШАЕМ GitHub Pages обращаться к нашему серверу
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # В идеале замени на свою ссылку github.io
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -17,29 +16,40 @@ WB_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjYwMzAydjEiLCJ0eXAiOiJKV1QifQ.eyJhY
 
 @app.get("/stats")
 def get_wb_stats():
-    # Получаем дату начала дня (сегодня с 00:00)
-    date_from = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%dT00:00:00')
+    # Устанавливаем московское время (UTC+3)
+    offset = timezone(timedelta(hours=3))
+    now = datetime.now(offset)
     
+    # Берем данные с начала текущих суток по Москве
+    date_from = now.strftime('%Y-%m-%dT00:00:00')
+    
+    # Метод /orders показывает свежие заказы
     url = "https://statistics-api.wildberries.ru/api/v1/supplier/orders"
     headers = {"Authorization": WB_TOKEN}
     params = {"dateFrom": date_from}
     
     try:
         response = requests.get(url, headers=headers, params=params)
+        if response.status_code != 200:
+            return {"status": "error", "message": f"WB Error: {response.status_code}"}
+            
         data = response.json()
         
-        # Считаем количество заказов и общую сумму
-        total_orders = len(data)
-        total_sum = sum(item.get('priceWithDisc', 0) for item in data) / 100 # Если цена в копейках
+        # Фильтруем заказы, которые были сделаны именно сегодня (на всякий случай)
+        today_orders = [
+            item for item in data 
+            if item.get('date').split('T')[0] == now.strftime('%Y-%m-%d')
+        ]
+        
+        total_orders = len(today_orders)
+        # Считаем сумму с учетом скидки WB (priceWithDisc)
+        total_sum = sum(item.get('priceWithDisc', 0) for item in today_orders)
         
         return {
             "orders": total_orders,
-            "revenue": round(total_sum, 2),
-            "status": "success"
+            "revenue": int(total_sum),
+            "status": "success",
+            "server_time": now.strftime('%H:%M:%S')
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
