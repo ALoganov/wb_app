@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WB Stat Mini App</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            background-color: var(--tg-theme-bg-color);
+            color: var(--tg-theme-text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .container { text-align: center; padding: 20px; }
+        button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            background-color: var(--tg-theme-button-color);
+            color: var(--tg-theme-button-text-color);
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .info { margin-bottom: 20px; font-size: 14px; color: var(--tg-theme-hint-color); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Статистика WB</h1>
+        <p class="info" id="user-info">Загрузка данных пользователя...</p>
+        
+        <div id="stat-placeholder">
+            <p>Здесь будут ваши продажи</p>
+        </div>
+
+        <button id="main-btn" onclick="sendData()">Обновить данные</button>
+    </div>
+
+    <script>
+        // Инициализация WebApp
+        const tg = window.Telegram.WebApp;
+
+        // Расширяем приложение на все окно
+        tg.expand();
+
+        // Показываем имя пользователя из Telegram
+        const userField = document.getElementById('user-info');
+        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
+            userField.innerText = `Привет, ${tg.initDataUnsafe.user.first_name}!`;
+        }
+
+        // Функция для отправки данных обратно боту
+        function sendData() {
+            tg.sendData("update_request"); // Бот получит это сообщение
+            tg.close(); // Закрыть приложение
+        }
+
+        // Настройка главной кнопки Telegram (внизу экрана)
+        tg.MainButton.text = "Получить отчет";
+        tg.MainButton.show();
+        tg.MainButton.onClick(() => {
+            alert("Запрос к Wildberries отправлен!");
+        });
+    </script>
+</body>
+</html>
