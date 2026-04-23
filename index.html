@@ -2,72 +2,108 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WB Stat Mini App</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WB Stat Live</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         body {
-            font-family: sans-serif;
-            background-color: var(--tg-theme-bg-color);
-            color: var(--tg-theme-text-color);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            margin: 0; padding: 16px;
+            display: flex; flex-direction: column; align-items: center;
         }
-        .container { text-align: center; padding: 20px; }
+        .card {
+            background-color: var(--tg-theme-secondary-bg-color, #f1f1f1);
+            border-radius: 15px; padding: 20px; width: 100%;
+            box-sizing: border-box; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+        h2 { margin: 0 0 10px 0; color: var(--tg-theme-button-color, #248bed); font-size: 18px; }
+        .stat-row {
+            display: flex; justify-content: space-between;
+            margin: 12px 0; padding-bottom: 8px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .value { font-weight: bold; font-size: 16px; }
+        .hint { font-size: 12px; color: var(--tg-theme-hint-color, #999); text-align: center; }
         button {
-            padding: 10px 20px;
-            border: none;
-            border-radius: 8px;
-            background-color: var(--tg-theme-button-color);
-            color: var(--tg-theme-button-text-color);
-            cursor: pointer;
-            font-weight: bold;
+            background-color: var(--tg-theme-button-color, #248bed);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none; border-radius: 10px; padding: 15px;
+            width: 100%; font-size: 16px; font-weight: 600; cursor: pointer;
         }
-        .info { margin-bottom: 20px; font-size: 14px; color: var(--tg-theme-hint-color); }
+        #loader { display: none; margin-top: 10px; font-size: 14px; color: #f39c12; }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>Статистика WB</h1>
-        <p class="info" id="user-info">Загрузка данных пользователя...</p>
+    <div class="card">
+        <h2 id="user-greeting">Загрузка...</h2>
+        <p class="hint">Данные из WB за сегодня:</p>
         
-        <div id="stat-placeholder">
-            <p>Здесь будут ваши продажи</p>
+        <div class="stat-row">
+            <span>Заказов:</span>
+            <span class="value" id="orders-count">...</span>
         </div>
-
-        <button id="main-btn" onclick="sendData()">Обновить данные</button>
+        <div class="stat-row">
+            <span>На сумму:</span>
+            <span class="value" id="revenue-count">...</span>
+        </div>
+        <div id="loader">🔄 Синхронизация с Wildberries...</div>
     </div>
 
-    <script>
-        // Инициализация WebApp
-        const tg = window.Telegram.WebApp;
+    <button id="refresh-btn">Обновить данные</button>
 
-        // Расширяем приложение на все окно
+    <script>
+        const tg = window.Telegram.WebApp;
+        const API_URL = "https://wb-backend-r049.onrender.com/stats";
+
+        tg.ready();
         tg.expand();
 
-        // Показываем имя пользователя из Telegram
-        const userField = document.getElementById('user-info');
-        if (tg.initDataUnsafe && tg.initDataUnsafe.user) {
-            userField.innerText = `Привет, ${tg.initDataUnsafe.user.first_name}!`;
+        // Отображаем имя пользователя
+        if (tg.initDataUnsafe?.user) {
+            document.getElementById('user-greeting').innerText = `Привет, ${tg.initDataUnsafe.user.first_name}! 👋`;
         }
 
-        // Функция для отправки данных обратно боту
-        function sendData() {
-            tg.sendData("update_request"); // Бот получит это сообщение
-            tg.close(); // Закрыть приложение
+        async function loadStats() {
+            const loader = document.getElementById('loader');
+            loader.style.display = "block";
+            
+            try {
+                const response = await fetch(API_URL);
+                const data = await response.json();
+                
+                if (data.status === "success") {
+                    document.getElementById('orders-count').innerText = `${data.orders} шт.`;
+                    document.getElementById('revenue-count').innerText = `${data.revenue.toLocaleString()} ₽`;
+                } else {
+                    alert("Ошибка API: " + data.message);
+                }
+            } catch (error) {
+                console.error("Ошибка запроса:", error);
+                // Если сервер на Render "спит", это уведомление поможет понять причину задержки
+                tg.showScanQrPopup({ text: "Просыпаюсь... Подождите 30 сек." });
+                setTimeout(() => tg.closeScanQrPopup(), 3000);
+            } finally {
+                loader.style.display = "none";
+            }
         }
 
-        // Настройка главной кнопки Telegram (внизу экрана)
-        tg.MainButton.text = "Получить отчет";
-        tg.MainButton.show();
-        tg.MainButton.onClick(() => {
-            alert("Запрос к Wildberries отправлен!");
+        // Загрузить при старте
+        loadStats();
+
+        // Кнопка обновления
+        document.getElementById('refresh-btn').addEventListener('click', () => {
+            tg.HapticFeedback.impactOccurred('light');
+            loadStats();
         });
+
+        // Главная кнопка закрытия
+        tg.MainButton.text = "ЗАКРЫТЬ";
+        tg.MainButton.show();
+        tg.MainButton.onClick(() => tg.close());
     </script>
 </body>
 </html>
