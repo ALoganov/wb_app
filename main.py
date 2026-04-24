@@ -1,3 +1,4 @@
+import os
 import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,10 +13,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WB_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjYwMzAydjEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjMsImVudCI6MSwiZXhwIjoxNzkyNzMxNTY3LCJmb3IiOiJzZWxmIiwiaWQiOiIwMTlkYmI0OC00MGMyLTc4Y2QtOWJhYS03NTNmMjJkMTkwNjIiLCJpaWQiOjU2MjYyODg3LCJvaWQiOjQwMDgxMDEsInMiOjEwNzM3NDE5MjQsInNpZCI6IjUyMTQ2YjUxLWRhY2QtNDdmNC04Njk3LTNhZTgxODRjZmVkYiIsInQiOmZhbHNlLCJ1aWQiOjU2MjYyODg3fQ.lWe-pechdZHPQr5DWn34XiQP7ISv7ba5tECz7UrqUgQWZaSlIonLX8tSZfN8QLac-2rJi4QKS7q_RbZhj2LZRw"
+WB_TOKEN= os.getenv("WB_TOKEN_KEY")
 
 @app.get("/stats")
 def get_wb_stats():
+    # Проверка на случай, если забыли прописать токен в настройках
+    if not WB_TOKEN:
+        return {"status": "error", "message": "API токен не настроен на сервере"}
+    
     offset = timezone(timedelta(hours=3))
     now = datetime.now(offset)
     
