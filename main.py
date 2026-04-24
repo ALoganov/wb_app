@@ -63,7 +63,7 @@ def get_wb_stats():
                     "if_priceWithDisc": int(rev_with_disc),
                     "if_finishedPrice": int(rev_finished),
                     "if_totalPrice": int(rev_total),
-                    "discount": int(rev_disc/5)
+                    "discount1": int(rev_disc)
                 }
             }
         }
