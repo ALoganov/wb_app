@@ -43,16 +43,26 @@ def get_wb_stats():
 
         today_orders = [i for i in data if today_str in i.get('date', '')]
         yesterday_orders = [i for i in data if yesterday_str in i.get('date', '')]
+
+        # Считаем три варианта для вчерашнего дня
+        rev_with_disc = sum(i.get('priceWithDisc', 0) for i in yesterday_orders)
+        rev_finished = sum(i.get('finishedPrice', 0) for i in yesterday_orders)
+        rev_total = sum(i.get('totalPrice', 0) for i in yesterday_orders)
         
         return {
             "status": "success",
             "today": {
                 "orders": len(today_orders),
-                "revenue": int(sum(i.get('finishedPrice', 0) for i in today_orders))
+                "revenue": int(sum(i.get('priceWithDisc', 0) for i in today_orders)) 
             },
             "yesterday": {
                 "orders": len(yesterday_orders),
-                "revenue": int(sum(i.get('totalPrice', 0) * (1 - i.get('discount', 0) / 100 for i in yesterday_orders))
+                "revenue": int(rev_with_disc), # оставляем пока так
+                "debug_sums": {
+                    "if_priceWithDisc": int(rev_with_disc),
+                    "if_finishedPrice": int(rev_finished),
+                    "if_totalPrice": int(rev_total)
+                }
             }
         }
     except Exception as e:
