@@ -38,20 +38,62 @@
 </head>
 <body>
 
-    <div class="card">
-        <h2 id="user-greeting">Загрузка...</h2>
-        <p class="hint">Данные из WB за сегодня:</p>
-        
+<div class="card">
+    <h2 id="user-greeting">Загрузка...</h2>
+    
+    <div class="main-stat">
+        <p class="hint">СЕГОДНЯ</p>
         <div class="stat-row">
-            <span>Заказов:</span>
-            <span class="value" id="orders-count">...</span>
+            <span class="value" id="orders-today">0 шт.</span>
+            <span class="value" id="rev-today">0 ₽</span>
         </div>
-        <div class="stat-row">
-            <span>На сумму:</span>
-            <span class="value" id="revenue-count">...</span>
-        </div>
-        <div id="loader">🔄 Синхронизация с Wildberries...</div>
     </div>
+
+    <hr style="opacity: 0.1; margin: 15px 0;">
+
+    <div class="secondary-stat">
+        <p class="hint">ВЧЕРА</p>
+        <div class="stat-row" style="opacity: 0.8; font-size: 14px;">
+            <span id="orders-yesterday">0 шт.</span>
+            <span id="rev-yesterday">0 ₽</span>
+        </div>
+    </div>
+    <div id="loader">🔄 Синхронизация...</div>
+</div>
+
+<script>
+    const tg = window.Telegram.WebApp;
+    const API_URL = "https://wb-backend-r049.onrender.com/stats";
+
+    tg.ready();
+    tg.expand();
+
+    async function loadStats() {
+        document.getElementById('loader').style.display = "block";
+        try {
+            const response = await fetch(API_URL);
+            const data = await response.json();
+            
+            if (data.status === "success") {
+                // Сегодня
+                document.getElementById('orders-today').innerText = `${data.today.orders} шт.`;
+                document.getElementById('rev-today').innerText = `${data.today.revenue.toLocaleString()} ₽`;
+                
+                // Вчера
+                document.getElementById('orders-yesterday').innerText = `${data.yesterday.orders} шт.`;
+                document.getElementById('rev-yesterday').innerText = `${data.yesterday.revenue.toLocaleString()} ₽`;
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            document.getElementById('loader').style.display = "none";
+        }
+    }
+
+    loadStats();
+    // Обновление по кнопке (если она есть) или через MainButton
+    tg.MainButton.setText("ОБНОВИТЬ").show().onClick(loadStats);
+</script>
 
     <button id="refresh-btn">Обновить данные</button>
 
