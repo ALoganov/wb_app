@@ -3,108 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WB Stat Live</title>
+    <title>WB Stat Monitor</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #000000);
-            margin: 0; padding: 16px;
-            display: flex; flex-direction: column; align-items: center;
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #ffffff);
+            --text-color: var(--tg-theme-text-color, #222222);
+            --hint-color: var(--tg-theme-hint-color, #999999);
+            --button-color: var(--tg-theme-button-color, #248bed);
+            --button-text: var(--tg-theme-button-text-color, #ffffff);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f7);
         }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
         .card {
-            background-color: var(--tg-theme-secondary-bg-color, #f1f1f1);
-            border-radius: 15px; padding: 20px; width: 100%;
-            box-sizing: border-box; box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            background-color: var(--secondary-bg);
+            border-radius: 16px;
+            padding: 20px;
+            width: 100%;
+            box-sizing: border-box;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
             margin-bottom: 20px;
         }
-        h2 { margin: 0 0 10px 0; color: var(--tg-theme-button-color, #248bed); font-size: 18px; }
+
+        h2 { margin: 0 0 15px 0; font-size: 20px; }
+
+        .stat-section { margin-bottom: 10px; }
+        
+        .period-label {
+            font-size: 12px;
+            font-weight: bold;
+            color: var(--hint-color);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+        }
+
         .stat-row {
-            display: flex; justify-content: space-between;
-            margin: 12px 0; padding-bottom: 8px;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
         }
-        .value { font-weight: bold; font-size: 16px; }
-        .hint { font-size: 12px; color: var(--tg-theme-hint-color, #999); text-align: center; }
-        button {
-            background-color: var(--tg-theme-button-color, #248bed);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border: none; border-radius: 10px; padding: 15px;
-            width: 100%; font-size: 16px; font-weight: 600; cursor: pointer;
+
+        .value-large { font-size: 22px; font-weight: 800; color: var(--button-color); }
+        .value-small { font-size: 18px; font-weight: 600; }
+        
+        hr { border: 0; border-top: 1px solid rgba(0,0,0,0.1); margin: 15px 0; }
+
+        #loader {
+            display: none;
+            font-size: 14px;
+            color: var(--hint-color);
+            margin-top: 10px;
+            animation: pulse 1.5s infinite;
         }
-        #loader { display: none; margin-top: 10px; font-size: 14px; color: #f39c12; }
+
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
+        }
+
+        .refresh-btn {
+            background-color: var(--button-color);
+            color: var(--button-text);
+            border: none;
+            border-radius: 12px;
+            padding: 14px;
+            width: 100%;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
 
-<div class="card">
-    <h2 id="user-greeting">Загрузка...</h2>
-    
-    <div class="main-stat">
-        <p class="hint">СЕГОДНЯ</p>
-        <div class="stat-row">
-            <span class="value" id="orders-today">0 шт.</span>
-            <span class="value" id="rev-today">0 ₽</span>
+    <div class="card">
+        <h2 id="user-greeting">Загрузка...</h2>
+        
+        <div class="stat-section">
+            <div class="period-label">Сегодня</div>
+            <div class="stat-row">
+                <span id="orders-today" class="value-large">0 шт.</span>
+                <span id="rev-today" class="value-large">0 ₽</span>
+            </div>
         </div>
+
+        <hr>
+
+        <div class="stat-section">
+            <div class="period-label">Вчера</div>
+            <div class="stat-row">
+                <span id="orders-yesterday" class="value-small">0 шт.</span>
+                <span id="rev-yesterday" class="value-small">0 ₽</span>
+            </div>
+        </div>
+
+        <div id="loader">🔄 Синхронизация с Wildberries...</div>
     </div>
 
-    <hr style="opacity: 0.1; margin: 15px 0;">
-
-    <div class="secondary-stat">
-        <p class="hint">ВЧЕРА</p>
-        <div class="stat-row" style="opacity: 0.8; font-size: 14px;">
-            <span id="orders-yesterday">0 шт.</span>
-            <span id="rev-yesterday">0 ₽</span>
-        </div>
-    </div>
-    <div id="loader">🔄 Синхронизация...</div>
-</div>
-
-<script>
-    const tg = window.Telegram.WebApp;
-    const API_URL = "https://wb-backend-r049.onrender.com/stats";
-
-    tg.ready();
-    tg.expand();
-
-    async function loadStats() {
-        document.getElementById('loader').style.display = "block";
-        try {
-            const response = await fetch(API_URL);
-            const data = await response.json();
-            
-            if (data.status === "success") {
-                // Сегодня
-                document.getElementById('orders-today').innerText = `${data.today.orders} шт.`;
-                document.getElementById('rev-today').innerText = `${data.today.revenue.toLocaleString()} ₽`;
-                
-                // Вчера
-                document.getElementById('orders-yesterday').innerText = `${data.yesterday.orders} шт.`;
-                document.getElementById('rev-yesterday').innerText = `${data.yesterday.revenue.toLocaleString()} ₽`;
-            }
-        } catch (e) {
-            console.error(e);
-        } finally {
-            document.getElementById('loader').style.display = "none";
-        }
-    }
-
-    loadStats();
-    // Обновление по кнопке (если она есть) или через MainButton
-    tg.MainButton.setText("ОБНОВИТЬ").show().onClick(loadStats);
-</script>
-
-    <button id="refresh-btn">Обновить данные</button>
+    <button class="refresh-btn" id="refresh-btn">Обновить данные</button>
 
     <script>
         const tg = window.Telegram.WebApp;
         const API_URL = "https://wb-backend-r049.onrender.com/stats";
 
+        // Инициализация Telegram
         tg.ready();
         tg.expand();
 
-        // Отображаем имя пользователя
+        // Отображение имени
         if (tg.initDataUnsafe?.user) {
             document.getElementById('user-greeting').innerText = `Привет, ${tg.initDataUnsafe.user.first_name}! 👋`;
         }
@@ -118,34 +139,36 @@
                 const data = await response.json();
                 
                 if (data.status === "success") {
-                    document.getElementById('orders-count').innerText = `${data.orders} шт.`;
-                    document.getElementById('revenue-count').innerText = `${data.revenue.toLocaleString()} ₽`;
+                    // Обновляем Сегодня
+                    document.getElementById('orders-today').innerText = `${data.today.orders} шт.`;
+                    document.getElementById('rev-today').innerText = `${data.today.revenue.toLocaleString()} ₽`;
+                    
+                    // Обновляем Вчера
+                    document.getElementById('orders-yesterday').innerText = `${data.yesterday.orders} шт.`;
+                    document.getElementById('rev-yesterday').innerText = `${data.yesterday.revenue.toLocaleString()} ₽`;
                 } else {
-                    alert("Ошибка API: " + data.message);
+                    console.error("Ошибка API:", data.message);
                 }
             } catch (error) {
-                console.error("Ошибка запроса:", error);
-                // Если сервер на Render "спит", это уведомление поможет понять причину задержки
-                tg.showScanQrPopup({ text: "Просыпаюсь... Подождите 30 сек." });
-                setTimeout(() => tg.closeScanQrPopup(), 3000);
+                console.error("Ошибка сети:", error);
+                // Подсказка на случай спящего сервера
+                tg.HapticFeedback.notificationOccurred('warning');
             } finally {
                 loader.style.display = "none";
             }
         }
 
-        // Загрузить при старте
+        // Запуск при открытии
         loadStats();
 
         // Кнопка обновления
         document.getElementById('refresh-btn').addEventListener('click', () => {
-            tg.HapticFeedback.impactOccurred('light');
+            tg.HapticFeedback.impactOccurred('medium');
             loadStats();
         });
 
-        // Главная кнопка закрытия
-        tg.MainButton.text = "ЗАКРЫТЬ";
-        tg.MainButton.show();
-        tg.MainButton.onClick(() => tg.close());
+        // Настройка главной кнопки внизу Telegram
+        tg.MainButton.setText("ЗАКРЫТЬ").show().onClick(() => tg.close());
     </script>
 </body>
 </html>
