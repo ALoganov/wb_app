@@ -12,50 +12,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WB_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjYwMzAydjEiLCJ0eXAiOiJKV1QifQ.eyJhY2MiOjMsImVudCI6MSwiZXhwIjoxNzkyNzMxNTY3LCJmb3IiOiJzZWxmIiwiaWQiOiIwMTlkYmI0OC00MGMyLTc4Y2QtOWJhYS03NTNmMjJkMTkwNjIiLCJpaWQiOjU2MjYyODg3LCJvaWQiOjQwMDgxMDEsInMiOjEwNzM3NDE5MjQsInNpZCI6IjUyMTQ2YjUxLWRhY2QtNDdmNC04Njk3LTNhZTgxODRjZmVkYiIsInQiOmZhbHNlLCJ1aWQiOjU2MjYyODg3fQ.lWe-pechdZHPQr5DWn34XiQP7ISv7ba5tECz7UrqUgQWZaSlIonLX8tSZfN8QLac-2rJi4QKS7q_RbZhj2LZRw"
+WB_TOKEN = "ТВОЙ_ТОКЕН_СТАТИСТИКИ_WB"
 
 @app.get("/stats")
 def get_wb_stats():
-    # Работаем с Московским временем
     offset = timezone(timedelta(hours=3))
     now_moscow = datetime.now(offset)
-    today_str = now_moscow.strftime('%Y-%m-%d')
     
-    # Чтобы WB точно отдал данные, запрашиваем со вчерашнего дня, 
-    # а фильтровать будем уже сами внутри кода.
-    yesterday = (now_moscow - timedelta(days=1)).strftime('%Y-%m-%dT00:00:00')
+    # Попробуем самый надежный формат: запрашиваем данные за последние 24 часа 
+    # без привязки к 00:00, чтобы увидеть хоть что-то
+    start_point = (now_moscow - timedelta(hours=24)).strftime('%Y-%m-%dT%H:%M:%S')
     
     url = "https://statistics-api.wildberries.ru/api/v1/supplier/orders"
     headers = {"Authorization": WB_TOKEN}
-    params = {"dateFrom": yesterday}
+    params = {"dateFrom": start_point, "flag": 0} # flag=0 для всех заказов
     
     try:
         response = requests.get(url, headers=headers, params=params)
-        
-        if response.status_code == 429:
-            return {"status": "error", "message": "Слишком много запросов к WB. Подождите минуту."}
-        
         data = response.json()
         
         if not isinstance(data, list):
-            return {"status": "success", "orders": 0, "revenue": 0, "msg": "Нет данных от WB"}
+            return {"status": "error", "message": "WB вернул не список", "raw": str(data)[:200]}
 
-        # Фильтруем заказы: оставляем только те, у которых дата совпадает с сегодняшней (по Москве)
-        # Формат даты в WB обычно: '2026-04-24T12:34:56'
-        today_orders = [
-            item for item in data 
-            if item.get('date', '').startswith(today_str)
-        ]
+        # ОТЛАДКА: Посмотрим на дату самого первого заказа в списке
+        sample_date = data[0].get('date') if len(data) > 0 else "Нет данных"
         
-        total_orders = len(today_orders)
-        total_sum = sum(item.get('priceWithDisc', 0) for item in today_orders)
+        # Считаем заказы за сегодня (24 апреля)
+        today_str = now_moscow.strftime('%Y-%m-%d')
+        today_orders = [item for item in data if today_str in item.get('date', '')]
         
         return {
-            "orders": total_orders,
-            "revenue": int(total_sum),
             "status": "success",
-            "check_date": today_str,
-            "count_all_returned": len(data) # для отладки, сколько всего прислал WB
+            "orders": len(today_orders),
+            "revenue": int(sum(item.get('priceWithDisc', 0) for item in today_orders)),
+            "debug": {
+                "total_in_response": len(data),
+                "first_order_date": sample_date,
+                "searching_for": today_str,
+                "requested_from": start_point
+            }
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
