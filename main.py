@@ -52,7 +52,7 @@ def get_wb_stats():
             },
             "yesterday": {
                 "orders": len(yesterday_orders),
-                "revenue": int(sum(i.get('finishedPrice', 0) for i in yesterday_orders))
+                "revenue": int(sum(i.get('totalPrice', 0) * (1 - i.get('discount', 0) / 100 for i in yesterday_orders))
             }
         }
     except Exception as e:
