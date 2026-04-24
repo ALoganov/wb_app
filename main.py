@@ -48,11 +48,11 @@ def get_wb_stats():
             "status": "success",
             "today": {
                 "orders": len(today_orders),
-                "revenue": int(sum(i.get('priceWithDisc', 0) for i in today_orders))
+                "revenue": int(sum(i.get('finishedPrice', 0) for i in today_orders))
             },
             "yesterday": {
                 "orders": len(yesterday_orders),
-                "revenue": int(sum(i.get('priceWithDisc', 0) for i in yesterday_orders))
+                "revenue": int(sum(i.get('finishedPrice', 0) for i in yesterday_orders))
             }
         }
     except Exception as e:
