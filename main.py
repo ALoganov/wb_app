@@ -16,40 +16,46 @@ WB_TOKEN = "eyJhbGciOiJFUzI1NiIsImtpZCI6IjIwMjYwMzAydjEiLCJ0eXAiOiJKV1QifQ.eyJhY
 
 @app.get("/stats")
 def get_wb_stats():
-    # Устанавливаем московское время (UTC+3)
+    # Работаем с Московским временем
     offset = timezone(timedelta(hours=3))
-    now = datetime.now(offset)
+    now_moscow = datetime.now(offset)
+    today_str = now_moscow.strftime('%Y-%m-%d')
     
-    # Берем данные с начала текущих суток по Москве
-    date_from = now.strftime('%Y-%m-%dT00:00:00')
+    # Чтобы WB точно отдал данные, запрашиваем со вчерашнего дня, 
+    # а фильтровать будем уже сами внутри кода.
+    yesterday = (now_moscow - timedelta(days=1)).strftime('%Y-%m-%dT00:00:00')
     
-    # Метод /orders показывает свежие заказы
     url = "https://statistics-api.wildberries.ru/api/v1/supplier/orders"
     headers = {"Authorization": WB_TOKEN}
-    params = {"dateFrom": date_from}
+    params = {"dateFrom": yesterday}
     
     try:
         response = requests.get(url, headers=headers, params=params)
-        if response.status_code != 200:
-            return {"status": "error", "message": f"WB Error: {response.status_code}"}
-            
+        
+        if response.status_code == 429:
+            return {"status": "error", "message": "Слишком много запросов к WB. Подождите минуту."}
+        
         data = response.json()
         
-        # Фильтруем заказы, которые были сделаны именно сегодня (на всякий случай)
+        if not isinstance(data, list):
+            return {"status": "success", "orders": 0, "revenue": 0, "msg": "Нет данных от WB"}
+
+        # Фильтруем заказы: оставляем только те, у которых дата совпадает с сегодняшней (по Москве)
+        # Формат даты в WB обычно: '2026-04-24T12:34:56'
         today_orders = [
             item for item in data 
-            if item.get('date').split('T')[0] == now.strftime('%Y-%m-%d')
+            if item.get('date', '').startswith(today_str)
         ]
         
         total_orders = len(today_orders)
-        # Считаем сумму с учетом скидки WB (priceWithDisc)
         total_sum = sum(item.get('priceWithDisc', 0) for item in today_orders)
         
         return {
             "orders": total_orders,
             "revenue": int(total_sum),
             "status": "success",
-            "server_time": now.strftime('%H:%M:%S')
+            "check_date": today_str,
+            "count_all_returned": len(data) # для отладки, сколько всего прислал WB
         }
     except Exception as e:
         return {"status": "error", "message": str(e)}
