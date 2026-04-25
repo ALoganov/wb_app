@@ -47,7 +47,7 @@ def get_wb_stats():
         # Считаем три варианта для вчерашнего дня
         rev_with_disc = sum(i.get('priceWithDisc', 0) for i in today_orders)
         rev_finished = sum(i.get('finishedPrice', 0) for i in today_orders)
-        #rev_total = sum(i.get('totalPrice', 0) for i in today_orders)
+        # rev_total = sum(i.get('totalPrice', 0) for i in today_orders)
         rev_total = sum(i.get('totalPrice', 0) * (1 - i.get('discountPercent', 0) / 100) for i in today_orders)
         rev_disc =  data[2].get('discountPercent') if len(data) > 0 else "Нет данных"
         # sum(i.get('discountPercent', 0) for i in today_orders)
