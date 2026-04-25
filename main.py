@@ -48,12 +48,12 @@ def get_wb_stats():
         rev_with_disc = sum(i.get('priceWithDisc', 0) for i in today_orders)
         rev_finished = sum(i.get('finishedPrice', 0) for i in today_orders)
         rev_total = sum(i.get('totalPrice', 0) for i in today_orders)
-        # rev_disc = sum(i.get('discountPercent', 0) for i in today_orders)
+        rev_disc = sum(i.get('discountPercent', 0) for i in today_orders)
 
         rev_with_disc1 = sum(i.get('priceWithDisc', 0) for i in yesterday_orders)
         rev_finished1 = sum(i.get('finishedPrice', 0) for i in yesterday_orders)
         rev_total1 = sum(i.get('totalPrice', 0) for i in yesterday_orders)
-        # rev_disc1 = sum(i.get('discountPercent', 0) for i in yesterday_orders)
+        rev_disc1 = sum(i.get('discountPercent', 0) for i in yesterday_orders)
         
         return {
             "status": "success",
@@ -63,8 +63,8 @@ def get_wb_stats():
                 "debug_sums": {
                     "if_priceWithDisc": int(rev_with_disc),
                     "if_finishedPrice": int(rev_finished),
-                    "if_totalPrice": int(rev_total)
-                    # "discount": int(rev_disc)
+                    "if_totalPrice": int(rev_total),
+                    "discount": int(rev_disc)
                 }
             },
             "yesterday": {
@@ -73,8 +73,8 @@ def get_wb_stats():
                 "debug_sums": {
                     "if_priceWithDisc": int(rev_with_disc1),
                     "if_finishedPrice": int(rev_finished1),
-                    "if_totalPrice": int(rev_total1)
-                    # "discount3": int(rev_disc1)
+                    "if_totalPrice": int(rev_total1),
+                    "discount3": int(rev_disc1)
                 }
             }
         }
