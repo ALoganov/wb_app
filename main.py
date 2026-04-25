@@ -64,7 +64,7 @@ def get_wb_stats():
                     "if_priceWithDisc": int(rev_with_disc),
                     "if_finishedPrice": int(rev_finished),
                     "if_totalPrice": int(rev_total),
-                    "discount": rev_disc
+                    "discount": int(rev_disc)
                 }
             },
             "yesterday": {
@@ -74,7 +74,7 @@ def get_wb_stats():
                     "if_priceWithDisc": int(rev_with_disc1),
                     "if_finishedPrice": int(rev_finished1),
                     "if_totalPrice": int(rev_total1),
-                    "discount3": rev_disc1
+                    "discount3": int(rev_disc1)
                 }
             }
         }
