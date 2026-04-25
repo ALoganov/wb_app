@@ -48,7 +48,7 @@ def get_wb_stats():
         rev_with_disc = sum(i.get('priceWithDisc', 0) for i in today_orders)
         rev_finished = sum(i.get('finishedPrice', 0) for i in today_orders)
         rev_total = sum(i.get('totalPrice', 0) for i in today_orders)
-        rev_disc = i.get('discountPercent', 0) for i in today_orders
+        rev_disc = sum(i.get('discountPercent', 0) for i in today_orders)
 
         rev_with_disc1 = sum(i.get('priceWithDisc', 0) for i in yesterday_orders)
         rev_finished1 = sum(i.get('finishedPrice', 0) for i in yesterday_orders)
@@ -74,7 +74,7 @@ def get_wb_stats():
                     "if_priceWithDisc": int(rev_with_disc1),
                     "if_finishedPrice": int(rev_finished1),
                     "if_totalPrice": int(rev_total1),
-                    "discount2": rev_disc1
+                    "discount3": rev_disc1
                 }
             }
         }
