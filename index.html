@@ -2,7 +2,100 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WB Stat Pro</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #ffffff);
+            --text-color: var(--tg-theme-text-color, #222222);
+            --hint-color: var(--tg-theme-hint-color, #999999);
+            --button-color: var(--tg-theme-button-color, #248bed);
+            --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f7);
+            --green: #31b545;
+        }
+
+        body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; }
+        .card { background: var(--secondary-bg); border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .period-label { font-size: 11px; font-weight: bold; color: var(--hint-color); text-transform: uppercase; margin-bottom: 12px; }
+        
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .stat-item { display: flex; flex-direction: column; }
+        .label { font-size: 12px; color: var(--hint-color); margin-bottom: 4px; }
+        .val { font-size: 18px; font-weight: 800; }
+        .val.orders { color: var(--button-color); }
+        .val.sales { color: var(--green); }
+        
+        hr { border: 0; border-top: 1px solid rgba(0,0,0,0.05); margin: 16px 0; }
+        .refresh-btn { background: var(--button-color); color: #fff; border: none; border-radius: 12px; padding: 14px; width: 100%; font-size: 16px; font-weight: 600; }
+        #loader { display: none; text-align: center; font-size: 12px; color: var(--hint-color); margin-top: 8px; }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <div class="period-label">Сегодня</div>
+        <div class="stat-grid">
+            <div class="stat-item">
+                <span class="label">Заказы</span>
+                <span id="o-t-c" class="val orders">0 шт.</span>
+                <span id="o-t-s" style="font-size: 13px;">0 ₽</span>
+            </div>
+            <div class="stat-item">
+                <span class="label">Выкупы</span>
+                <span id="s-t-c" class="val sales">0 шт.</span>
+                <span id="s-t-s" style="font-size: 13px;">0 ₽</span>
+            </div>
+        </div>
+        <hr>
+        <div class="period-label">Вчера</div>
+        <div class="stat-grid">
+            <div class="stat-item">
+                <span id="o-y-c" class="val orders" style="font-size: 16px;">0 шт.</span>
+                <span id="o-y-s" style="font-size: 12px; color: var(--hint-color);">0 ₽</span>
+            </div>
+            <div class="stat-item">
+                <span id="s-y-c" class="val sales" style="font-size: 16px;">0 шт.</span>
+                <span id="s-y-s" style="font-size: 12px; color: var(--hint-color);">0 ₽</span>
+            </div>
+        </div>
+    </div>
+
+    <button class="refresh-btn" onclick="loadStats()">Обновить</button>
+    <div id="loader">Синхронизация...</div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const API_URL = "https://wb-backend-r049.onrender.com/stats";
+        tg.ready(); tg.expand();
+
+        async function loadStats() {
+            document.getElementById('loader').style.display = "block";
+            try {
+                const r = await fetch(API_URL);
+                const d = await r.json();
+                if(d.status === "success") {
+                    // Сегодня
+                    document.getElementById('o-t-c').innerText = d.today.orders.count + ' шт.';
+                    document.getElementById('o-t-s').innerText = d.today.orders.rev.toLocaleString() + ' ₽';
+                    document.getElementById('s-t-c').innerText = d.today.sales.count + ' шт.';
+                    document.getElementById('s-t-s').innerText = d.today.sales.rev.toLocaleString() + ' ₽';
+                    // Вчера
+                    document.getElementById('o-y-c').innerText = d.yesterday.orders.count + ' шт.';
+                    document.getElementById('o-y-s').innerText = d.yesterday.orders.rev.toLocaleString() + ' ₽';
+                    document.getElementById('s-y-c').innerText = d.yesterday.sales.count + ' шт.';
+                    document.getElementById('s-y-s').innerText = d.yesterday.sales.rev.toLocaleString() + ' ₽';
+                }
+            } catch(e) {} finally { document.getElementById('loader').style.display = "none"; }
+        }
+        loadStats();
+    </script>
+</body>
+</html>-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>WB Stat Monitor</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
