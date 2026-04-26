@@ -52,7 +52,8 @@ def get_adv():
                 "sum": best_data.get('sum', 0),
                 "atc": best_data.get('atc', 0),
                 "orders": best_data.get('orders', 0),
-                "date": best_data.get('date', 'Нет данных')
+                "date": best_data.get('date', 'Нет данных'),
+                "res": res.status_code
             })
         except:
             continue
