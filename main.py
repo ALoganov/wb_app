@@ -13,56 +13,55 @@ WB_TOKEN = os.getenv("WB_TOKEN_KEY")
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
     offset = timezone(timedelta(hours=3))
-    today_date = datetime.now(offset).strftime('%Y-%m-%d')
+    now = datetime.now(offset)
+    
+    # Формируем даты для запроса (сегодня и вчера)
+    date_to = now.strftime('%Y-%m-%d')
+    date_from = (now - timedelta(days=1)).strftime('%Y-%m-%d')
     
     try:
-        # Список твоих активных ID, которые мы нашли
         target_ids = [28255817, 27952577, 16936998]
-        
-        # Метод v2/fullstats работает только через POST
         stats_url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
         
-        # Формируем запрос: просим данные по конкретным ID
-        payload = [{"id": cid} for cid in target_ids]
+        # Передаем ID и конкретные даты — это заставляет API выгрузить данные
+        payload = [{"id": cid, "dates": [date_from, date_to]} for cid in target_ids]
         
-        res = requests.post(stats_url, headers=headers, json=payload, timeout=10)
+        res = requests.post(stats_url, headers=headers, json=payload, timeout=15)
         
         final_results = []
-        stats_map = {}
-        
         if res.status_code == 200:
             raw_stats = res.json()
-            for item in raw_stats:
-                # Ищем в массиве days запись за сегодня
+            # Создаем словарь для быстрого доступа по ID
+            stats_dict = {item.get('advertId'): item for item in raw_stats}
+            
+            for cid in target_ids:
+                item = stats_dict.get(cid, {})
                 days = item.get('days', [])
-                today_data = next((d for d in days if d.get('date', '').startswith(today_date)), {})
                 
-                # Если за сегодня еще нет данных (ВБ тормозит), берем самую последнюю доступную запись
-                if not today_data and days:
-                    today_data = days[-1]
+                # Ищем данные именно за сегодня
+                current = next((d for d in days if d.get('date', '').startswith(date_to)), {})
                 
-                stats_map[item.get('advertId')] = today_data
+                # Если за сегодня пусто (ВБ еще не обновил), берем последнюю запись (за вчера)
+                if not current and days:
+                    current = days[-1]
 
-        # Формируем ответ для фронтенда
-        for cid in target_ids:
-            s = stats_map.get(cid, {})
-            
-            # Определяем имя по твоим данным
-            name = "Поиск" if cid == 28255817 else ("АРК" if cid == 27952577 else f"Кампания {cid}")
-            
-            final_results.append({
-                "id1": cid,
-                "name": name,
-                "status": "Идет" if s.get('views', 0) > 0 else "Активна",
-                "views": s.get('views', 0),
-                "clicks": s.get('clicks', 0),
-                "ctr": s.get('ctr', 0),
-                "cpm": s.get('cpm', 0),
-                "sum": s.get('sum', 0),
-                "atc": s.get('atc', 0),
-                "orders": s.get('orders', 0),
-                "date": s.get('date', today_date)
-            })
+                name = "Поиск" if cid == 28255817 else ("АРК" if cid == 27952577 else f"Кампания {cid}")
+                
+                final_results.append({
+                    "id": cid,
+                    "name": name,
+                    "status": "Идет" if current.get('views', 0) > 0 else "Активна",
+                    "views": current.get('views', 0),
+                    "clicks": current.get('clicks', 0),
+                    "ctr": current.get('ctr', 0),
+                    "cpm": current.get('cpm', 0),
+                    "sum": current.get('sum', 0),
+                    "atc": current.get('atc', 0),
+                    "orders": current.get('orders', 0),
+                    "date": current.get('date', date_to)
+                })
+        else:
+             return {"status": "error", "message": f"WB API Error: {res.status_code}"}
 
         return {"status": "success", "campaigns": final_results}
 
