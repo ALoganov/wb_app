@@ -50,7 +50,7 @@ def get_adv():
             name = "Поиск" if cid == 28255817 else ("АРК" if cid == 27952577 else f"Кампания {cid}")
             
             final_results.append({
-                "id": cid,
+                "id1": cid,
                 "name": name,
                 "status": "Идет" if s.get('views', 0) > 0 else "Активна",
                 "views": s.get('views', 0),
