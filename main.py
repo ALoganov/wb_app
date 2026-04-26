@@ -13,57 +13,51 @@ WB_TOKEN = os.getenv("WB_TOKEN_KEY")
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
     offset = timezone(timedelta(hours=3))
-    now = datetime.now(offset)
+    today_date = datetime.now(offset).strftime('%Y-%m-%d')
     
-    # Формируем даты для запроса (сегодня и вчера)
-    date_to = now.strftime('%Y-%m-%d')
-    date_from = (now - timedelta(days=1)).strftime('%Y-%m-%d')
-    
-    try:
-        target_ids = [28255817, 27952577, 16936998]
-        stats_url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
+    # Твои подтвержденные ID
+    target_ids = [28255817, 27952577, 16936998]
+    final_results = []
+
+    for cid in target_ids:
+        # Используем индивидуальный метод GET, который часто стабильнее
+        url = f"https://advert-api.wildberries.ru/adv/v1/fullstat?id={cid}"
         
-        # Передаем ID и конкретные даты — это заставляет API выгрузить данные
-        payload = [{"id": cid, "dates": [date_from, date_to]} for cid in target_ids]
-        
-        res = requests.post(stats_url, headers=headers, json=payload, timeout=15)
-        
-        final_results = []
-        if res.status_code == 200:
-            raw_stats = res.json()
-            # Создаем словарь для быстрого доступа по ID
-            stats_dict = {item.get('advertId'): item for item in raw_stats}
+        try:
+            res = requests.get(url, headers=headers, timeout=10)
+            s_data = {}
             
-            for cid in target_ids:
-                item = stats_dict.get(cid, {})
-                days = item.get('days', [])
-                
-                # Ищем данные именно за сегодня
-                current = next((d for d in days if d.get('date', '').startswith(date_to)), {})
-                
-                # Если за сегодня пусто (ВБ еще не обновил), берем последнюю запись (за вчера)
-                if not current and days:
-                    current = days[-1]
+            if res.status_code == 200:
+                data = res.json()
+                # WB возвращает список дней в поле 'days'
+                days = data.get('days', [])
+                if days:
+                    # Ищем сегодняшний день, если нет - берем самый последний доступный
+                    today_entry = next((d for d in days if d.get('date', '').startswith(today_date)), days[-1])
+                    s_data = today_entry
+            
+            # Определяем имя
+            if cid == 28255817: name = "Поиск"
+            elif cid == 27952577: name = "АРК"
+            else: name = f"Кампания {cid}"
 
-                name = "Поиск" if cid == 28255817 else ("АРК" if cid == 27952577 else f"Кампания {cid}")
-                
-                final_results.append({
-                    "id": cid,
-                    "name": name,
-                    "status": "Идет" if current.get('views', 0) > 0 else "Активна",
-                    "views": current.get('views', 0),
-                    "clicks": current.get('clicks', 0),
-                    "ctr": current.get('ctr', 0),
-                    "cpm": current.get('cpm', 0),
-                    "sum": current.get('sum', 0),
-                    "atc": current.get('atc', 0),
-                    "orders": current.get('orders', 0),
-                    "date": current.get('date', date_to)
-                })
-        else:
-             return {"status": "error", "message": f"WB API Error: {res.status_code}"}
+            final_results.append({
+                "id": cid,
+                "name": name,
+                "status": "Идет" if s_data.get('views', 0) > 0 else "Активна",
+                "views": s_data.get('views', 0),
+                "clicks": s_data.get('clicks', 0),
+                "ctr": s_data.get('ctr', 0),
+                "cpm": s_data.get('cpm', 0),
+                "sum": s_data.get('sum', 0),
+                "atc": s_data.get('atc', 0),
+                "orders": s_data.get('orders', 0),
+                "date": s_data.get('date', today_date)
+            })
+        except:
+            continue
 
-        return {"status": "success", "campaigns": final_results}
+    if not final_results:
+        return {"status": "error", "message": "Не удалось получить данные ни по одной кампании"}
 
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    return {"status": "success", "campaigns": final_results}
