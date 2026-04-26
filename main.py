@@ -12,29 +12,29 @@ WB_TOKEN = os.getenv("WB_TOKEN_KEY")
 @app.get("/adv")
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
-    offset = timezone(timedelta(hours=3))
-    today_date = datetime.now(offset).strftime('%Y-%m-%d')
-    
-    # Твои подтвержденные ID
     target_ids = [28255817, 27952577, 16936998]
     final_results = []
 
     for cid in target_ids:
-        # Используем индивидуальный метод GET, который часто стабильнее
+        # Запрашиваем статистику без фильтра по дате, чтобы получить историю
         url = f"https://advert-api.wildberries.ru/adv/v1/fullstat?id={cid}"
         
         try:
             res = requests.get(url, headers=headers, timeout=10)
-            s_data = {}
+            best_data = {}
             
             if res.status_code == 200:
                 data = res.json()
-                # WB возвращает список дней в поле 'days'
                 days = data.get('days', [])
+                
                 if days:
-                    # Ищем сегодняшний день, если нет - берем самый последний доступный
-                    today_entry = next((d for d in days if d.get('date', '').startswith(today_date)), days[-1])
-                    s_data = today_entry
+                    # Ищем самый свежий день, где были просмотры (views > 0)
+                    # Идем с конца списка (от новых к старым)
+                    active_days = [d for d in days if d.get('views', 0) > 0]
+                    if active_days:
+                        best_data = active_days[-1] # Самый свежий активный день
+                    else:
+                        best_data = days[-1] # Если везде 0, просто берем последний день
             
             # Определяем имя
             if cid == 28255817: name = "Поиск"
@@ -44,20 +44,17 @@ def get_adv():
             final_results.append({
                 "id": cid,
                 "name": name,
-                "status": "Идет" if s_data.get('views', 0) > 0 else "Активна",
-                "views": s_data.get('views', 0),
-                "clicks": s_data.get('clicks', 0),
-                "ctr": s_data.get('ctr', 0),
-                "cpm": s_data.get('cpm', 0),
-                "sum": s_data.get('sum', 0),
-                "atc": s_data.get('atc', 0),
-                "orders": s_data.get('orders', 0),
-                "date": s_data.get('date', today_date)
+                "status": "Идет" if best_data.get('views', 0) > 0 else "Пауза/Нули",
+                "views": best_data.get('views', 0),
+                "clicks": best_data.get('clicks', 0),
+                "ctr": best_data.get('ctr', 0),
+                "cpm": best_data.get('cpm', 0),
+                "sum": best_data.get('sum', 0),
+                "atc": best_data.get('atc', 0),
+                "orders": best_data.get('orders', 0),
+                "date": best_data.get('date', 'Нет данных')
             })
         except:
             continue
-
-    if not final_results:
-        return {"status": "error", "message": "Не удалось получить данные ни по одной кампании"}
 
     return {"status": "success", "campaigns": final_results}
