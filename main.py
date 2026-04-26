@@ -1,3 +1,13 @@
+import os
+import requests
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+WB_TOKEN = os.getenv("WB_TOKEN_KEY")
+
 @app.get("/adv")
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
