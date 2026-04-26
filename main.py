@@ -2,109 +2,78 @@ import os
 import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime, timedelta, timezone
 
 app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 WB_TOKEN = os.getenv("WB_TOKEN_KEY")
-
-def fetch_wb(url, headers, params=None):
-    try:
-        r = requests.get(url, headers=headers, params=params, timeout=10)
-        return r.json() if r.status_code == 200 else None
-    except: return None
-
-@app.get("/stats")
-def get_stats():
-    offset = timezone(timedelta(hours=3))
-    now = datetime.now(offset)
-    today = now.strftime('%Y-%m-%d')
-    yesterday = (now - timedelta(days=1)).strftime('%Y-%m-%d')
-    start = (now - timedelta(days=3)).strftime('%Y-%m-%dT00:00:00')
-    
-    headers = {"Authorization": WB_TOKEN}
-    orders = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/orders", headers, {"dateFrom": start, "flag": 0}) or []
-    sales = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/sales", headers, {"dateFrom": start, "flag": 0}) or []
-
-    def process(src, dt, is_s=False):
-        items = [i for i in src if dt in i.get('date', '')]
-        if is_s: rev = sum(i.get('finishedPrice', 0) for i in items)
-        else: rev = sum(i.get('totalPrice', 0) * (1 - (i.get('discountPercent', 0) - 1) / 100) for i in items)
-        return {"count": len(items), "rev": int(rev)}
-
-    return {
-        "status": "success",
-        "today": {"orders": process(orders, today), "sales": process(sales, today, True)},
-        "yesterday": {"orders": process(orders, yesterday), "sales": process(sales, yesterday, True)}
-    }
 
 @app.get("/adv")
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
+    result_ids = []
     
-    # 1. Получаем реальный список всех кампаний (метод /adverts более надежный)
-    # Статусы: 7 - завершена, 8 - отказался, 9 - идет, 11 - пауза
-    list_url = "https://advert-api.wildberries.ru/adv/v1/promotion/adverts"
-    all_campaigns = fetch_wb(list_url, headers)
-    
-    if not all_campaigns or not isinstance(all_campaigns, list):
-        # Если /adverts не сработал, пробуем /count как запасной
-        return {"status": "error", "message": "Не удалось получить список кампаний"}
+    # ТЕСТ 1: Пробуем метод /adverts (основной)
+    r1 = requests.get("https://advert-api.wildberries.ru/adv/v1/promotion/adverts", headers=headers)
+    if r1.status_code == 200:
+        data = r1.json()
+        if isinstance(data, list):
+            result_ids = [{"id": c.get('advertId'), "name": c.get('name')} for c in data if c.get('status') in [9, 11]]
 
-    # Отбираем только те, что не удалены (например, статусы 9 и 11)
-    # И ограничимся последними 10, чтобы не "повесить" запрос
-    active_ids = [c.get('advertId') for c in all_campaigns if c.get('status') in [9, 11]]
-    
-    # Если активных нет, возьмем просто последние 5 любых для теста
-    if not active_ids:
-        active_ids = [c.get('advertId') for c in all_campaigns[-5:]]
+    # ТЕСТ 2: Если первый пуст, пробуем метод /count (альтернативный)
+    if not result_ids:
+        r2 = requests.get("https://advert-api.wildberries.ru/adv/v1/promotion/count", headers=headers)
+        if r2.status_code == 200:
+            data = r2.json()
+            adverts = data.get('adverts', [])
+            for group in adverts:
+                for a in group.get('advert_list', []):
+                    result_ids.append({"id": a.get('advertId'), "name": f"ID: {a.get('advertId')}"})
 
-    if not active_ids:
-        return {"status": "success", "campaigns": [], "debug": "Кампании вообще не найдены"}
+    if not result_ids:
+        # Если всё еще пусто, возвращаем детальный статус ответов для диагностики
+        return {
+            "status": "error", 
+            "message": "Кампании не найдены ни одним методом",
+            "debug": {
+                "method_adverts_status": r1.status_code,
+                "method_count_status": r2.status_code if 'r2' in locals() else "not_tried",
+                "token_preview": f"{WB_TOKEN[:10]}..." if WB_TOKEN else "MISSING"
+            }
+        }
 
-    # 2. Запрашиваем статистику через v2/fullstats
+    # Если нашли ID, запрашиваем статистику по первым 10
     stats_url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
-    payload = [{"id": cid} for cid in active_ids]
+    payload = [{"id": c['id']} for c in result_ids[:10]]
     
     try:
-        stats_res = requests.post(stats_url, headers=headers, json=payload, timeout=15)
-        if stats_res.status_code != 200:
-             return {"status": "error", "message": f"WB Stats Error: {stats_res.status_code}"}
-             
-        raw_stats = stats_res.json()
-        result = []
-
-        # Создаем словарь для быстрого поиска имен кампаний
-        names = {c.get('advertId'): c.get('name') for c in all_campaigns}
-
-        for c_stat in raw_stats:
-            cid = c_stat.get('advertId')
-            days = c_stat.get('days', [])
-            
-            # Берем данные за сегодня (последний элемент в days)
-            # Если сегодня данных нет, берем вчера (индекс -1 всегда даст последнее событие)
+        res = requests.post(stats_url, headers=headers, json=payload, timeout=15)
+        if res.status_code != 200:
+            return {"status": "error", "message": f"Статистика недоступна (Код {res.status_code})"}
+        
+        raw_stats = res.json()
+        final_campaigns = []
+        
+        # Мапим имена
+        names = {c['id']: c['name'] for c in result_ids}
+        
+        for s in raw_stats:
+            days = s.get('days', [])
+            # Берем самый свежий день из доступных
             current = days[-1] if days else {}
             
-            result.append({
-                "id": cid,
-                "name": names.get(cid, "Без названия"),
+            final_campaigns.append({
+                "id": s.get('advertId'),
+                "name": names.get(s.get('advertId'), "Без имени"),
                 "views": current.get('views', 0),
                 "clicks": current.get('clicks', 0),
                 "ctr": current.get('ctr', 0),
                 "cpm": current.get('cpm', 0),
                 "sum": current.get('sum', 0),
-                "atc": current.get('atc', 0),
                 "orders": current.get('orders', 0),
                 "date": current.get('date', 'Нет данных')
             })
-
-        return {"status": "success", "campaigns": result}
+            
+        return {"status": "success", "campaigns": final_campaigns}
     except Exception as e:
         return {"status": "error", "message": str(e)}
