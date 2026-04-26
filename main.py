@@ -48,44 +48,57 @@ def get_stats():
 @app.get("/adv")
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
-    # 1. Получаем список кампаний
+    
+    # 1. Получаем список ID всех кампаний без фильтрации по статусу (v1/promotion/count)
     adv_list_url = "https://advert-api.wildberries.ru/adv/v1/promotion/count"
     adv_data = fetch_wb(adv_list_url, headers)
     
-    if not adv_data: return {"status": "error", "message": "Нет данных по рекламе"}
+    if not adv_data or 'adverts' not in adv_data:
+        return {"status": "error", "message": "Не удалось получить список кампаний"}
 
-    # Собираем ID всех активных и приостановленных кампаний (статусы 9 и 11)
     campaign_ids = []
-    if 'adverts' in adv_data:
-        for group in adv_data['adverts']:
-            for adv in group.get('advert_list', []):
-                if adv.get('status') in [9, 11]:
-                    campaign_ids.append(adv.get('advertId'))
+    # Собираем ID из всех возможных групп (9 - идут, 11 - на паузе, 7 - завершены и т.д.)
+    for group in adv_data['adverts']:
+        for adv in group.get('advert_list', []):
+            cid = adv.get('advertId')
+            if cid:
+                campaign_ids.append(cid)
 
-    if not campaign_ids: return {"status": "success", "campaigns": []}
+    if not campaign_ids:
+        return {"status": "success", "campaigns": [], "msg": "Кампании не найдены в списке"}
 
-    # 2. Получаем детальную статистику по этим ID
+    # 2. Запрашиваем статистику. 
+    # ВАЖНО: берем только последние 10-20 кампаний, чтобы не перегрузить API
     stats_url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
-    # WB принимает список ID в теле запроса (POST) или через JSON
-    stats_res = requests.post(stats_url, headers=headers, json=[{"id": cid} for cid in campaign_ids[:10]])
+    
+    # Мы запрашиваем список словарей [{"id": ...}, ...]
+    payload = [{"id": cid} for cid in campaign_ids[-15:]] 
+    stats_res = requests.post(stats_url, headers=headers, json=payload)
     
     result = []
     if stats_res.status_code == 200:
         raw_stats = stats_res.json()
+        
         for c_stat in raw_stats:
-            # Берем данные за сегодня (последний день в списке days)
             days = c_stat.get('days', [])
-            today_data = days[-1] if days else {}
+            # Если кампании старые, в списке 'days' может не быть сегодняшней даты.
+            # Берем самые свежие данные из имеющихся:
+            current_metrics = days[-1] if days else {}
             
+            # Если данных за сегодня/вчера вообще нет в статистике, пропустим пустые
+            if not current_metrics and not c_stat.get('advertId'):
+                continue
+
             result.append({
                 "id": c_stat.get('advertId'),
-                "views": today_data.get('views', 0),
-                "clicks": today_data.get('clicks', 0),
-                "ctr": today_data.get('ctr', 0),
-                "cpm": today_data.get('cpm', 0),
-                "sum": today_data.get('sum', 0),
-                "atc": today_data.get('atc', 0), # корзины
-                "orders": today_data.get('orders', 0)
+                "views": current_metrics.get('views', 0),
+                "clicks": current_metrics.get('clicks', 0),
+                "ctr": current_metrics.get('ctr', 0),
+                "cpm": current_metrics.get('cpm', 0),
+                "sum": current_metrics.get('sum', 0),
+                "atc": current_metrics.get('atc', 0),
+                "orders": current_metrics.get('orders', 0),
+                "date": current_metrics.get('date', 'Нет данных') # Посмотрим, за какое число данные
             })
 
     return {"status": "success", "campaigns": result}
