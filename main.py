@@ -57,7 +57,7 @@ def get_adv():
                 "sum": int(stats.get('sum', 0)),
                 "atc": stats.get('atc', 0),
                 "orders": stats.get('orders', 0),
-                "date": stats.get('date', today)
+                "date1": stats.get('date', today)
             })
         except:
             continue
