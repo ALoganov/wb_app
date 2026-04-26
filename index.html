@@ -116,7 +116,12 @@
                     d.campaigns.forEach(c => {
     html += `
     <div class="adv-item">
-        <div class="adv-header">${c.name} <span style="color:var(--hint); font-weight:normal; font-size:10px;">ID: ${c.id}</span></div>
+        <div class="adv-header">
+    ${c.name} 
+    <span style="color:${c.status === 'Идет' ? 'var(--green)' : 'var(--hint)'}; font-size:10px; margin-left:8px;">
+        ● ${c.status}
+    </span>
+</div>
         <div class="adv-grid">
             <div class="adv-metric"><span>CPM</span><span class="adv-val">${c.cpm}</span></div>
             <div class="adv-metric"><span>Показы</span><span class="adv-val">${c.views}</span></div>
