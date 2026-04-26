@@ -54,7 +54,7 @@ def get_adv():
     adv_data = fetch_wb(adv_list_url, headers)
     
     if not adv_data or 'adverts' not in adv_data:
-        return {"status": "error", "message": "Не удалось получить список кампаний"}
+        return {"status1": "error", "message": "Не удалось получить список кампаний"}
 
     campaign_ids = []
     # Собираем ID из всех возможных групп (9 - идут, 11 - на паузе, 7 - завершены и т.д.)
@@ -65,7 +65,7 @@ def get_adv():
                 campaign_ids.append(cid)
 
     if not campaign_ids:
-        return {"status": "success", "campaigns": [], "msg": "Кампании не найдены в списке"}
+        return {"status1": "success", "campaigns": [], "msg": "Кампании не найдены в списке"}
 
     # 2. Запрашиваем статистику. 
     # ВАЖНО: берем только последние 10-20 кампаний, чтобы не перегрузить API
@@ -101,4 +101,4 @@ def get_adv():
                 "date": current_metrics.get('date', 'Нет данных') # Посмотрим, за какое число данные
             })
 
-    return {"status": "success", "campaigns": result}
+    return {"status1": "success", "campaigns": result}
