@@ -114,19 +114,20 @@
                 
                 if(d.campaigns && d.campaigns.length > 0) {
                     d.campaigns.forEach(c => {
-                        html += `
-                        <div class="adv-item">
-                            <div class="adv-header">ID: ${c.id}</div>
-                            <div class="adv-grid">
-                                <div class="adv-metric"><span>CPM</span><span class="adv-val">${c.cpm}</span></div>
-                                <div class="adv-metric"><span>Показы</span><span class="adv-val">${c.views}</span></div>
-                                <div class="adv-metric"><span>CTR</span><span class="adv-val">${c.ctr}%</span></div>
-                                <div class="adv-metric"><span>Клики</span><span class="adv-val">${c.clicks}</span></div>
-                                <div class="adv-metric"><span>Расход</span><span class="adv-val">${c.sum} ₽</span></div>
-                                <div class="adv-metric"><span>Заказы</span><span class="adv-val">${c.orders}</span></div>
-                            </div>
-                        </div>`;
-                    });
+    html += `
+    <div class="adv-item">
+        <div class="adv-header">${c.name} <span style="color:var(--hint); font-weight:normal; font-size:10px;">ID: ${c.id}</span></div>
+        <div class="adv-grid">
+            <div class="adv-metric"><span>CPM</span><span class="adv-val">${c.cpm}</span></div>
+            <div class="adv-metric"><span>Показы</span><span class="adv-val">${c.views}</span></div>
+            <div class="adv-metric"><span>CTR</span><span class="adv-val">${c.ctr}%</span></div>
+            <div class="adv-metric"><span>Клики</span><span class="adv-val">${c.clicks}</span></div>
+            <div class="adv-metric"><span>Расход</span><span class="adv-val">${c.sum} ₽</span></div>
+            <div class="adv-metric"><span>Заказы</span><span class="adv-val">${c.orders}</span></div>
+        </div>
+        <div style="font-size:9px; color:var(--hint); margin-top:4px;">Данные за: ${c.date}</div>
+    </div>`;
+});
                 } else { html += '<p style="font-size:13px; color:var(--hint)">Нет активных кампаний</p>'; }
                 list.innerHTML = html;
             } catch(e) { list.innerHTML = 'Ошибка загрузки'; } finally { showLoader(false); }
