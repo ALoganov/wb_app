@@ -3,92 +3,138 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>WB Stat Pro</title>
+    <title>WB Management</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
         :root {
-            --bg-color: var(--tg-theme-bg-color, #ffffff);
-            --text-color: var(--tg-theme-text-color, #222222);
-            --hint-color: var(--tg-theme-hint-color, #999999);
-            --button-color: var(--tg-theme-button-color, #248bed);
-            --secondary-bg: var(--tg-theme-secondary-bg-color, #f4f4f7);
+            --bg: var(--tg-theme-bg-color, #ffffff);
+            --text: var(--tg-theme-text-color, #222);
+            --hint: var(--tg-theme-hint-color, #999);
+            --blue: var(--tg-theme-button-color, #248bed);
+            --sec-bg: var(--tg-theme-secondary-bg-color, #f4f4f7);
             --green: #31b545;
         }
-
-        body { font-family: -apple-system, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 16px; }
-        .card { background: var(--secondary-bg); border-radius: 16px; padding: 16px; margin-bottom: 16px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
-        .period-label { font-size: 11px; font-weight: bold; color: var(--hint-color); text-transform: uppercase; margin-bottom: 12px; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; }
         
+        /* Вкладки */
+        .tabs { display: flex; background: var(--sec-bg); padding: 4px; margin: 12px; border-radius: 10px; }
+        .tab { flex: 1; text-align: center; padding: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 8px; transition: 0.2s; }
+        .tab.active { background: var(--bg); color: var(--blue); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+
+        .content { padding: 0 12px; }
+        .card { background: var(--sec-bg); border-radius: 16px; padding: 16px; margin-bottom: 12px; }
+        
+        /* Стили Рекламы */
+        .adv-item { border-bottom: 1px solid rgba(0,0,0,0.05); padding: 12px 0; }
+        .adv-item:last-child { border: 0; }
+        .adv-header { font-weight: bold; font-size: 14px; margin-bottom: 8px; color: var(--blue); }
+        .adv-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align: center; }
+        .adv-metric { display: flex; flex-direction: column; font-size: 11px; color: var(--hint); }
+        .adv-val { font-size: 14px; font-weight: bold; color: var(--text); }
+
+        .period-label { font-size: 11px; font-weight: bold; color: var(--hint); text-transform: uppercase; margin-bottom: 12px; }
         .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .stat-item { display: flex; flex-direction: column; }
-        .label { font-size: 12px; color: var(--hint-color); margin-bottom: 4px; }
         .val { font-size: 18px; font-weight: 800; }
-        .val.orders { color: var(--button-color); }
+        .val.orders { color: var(--blue); }
         .val.sales { color: var(--green); }
         
-        hr { border: 0; border-top: 1px solid rgba(0,0,0,0.05); margin: 16px 0; }
-        .refresh-btn { background: var(--button-color); color: #fff; border: none; border-radius: 12px; padding: 14px; width: 100%; font-size: 16px; font-weight: 600; }
-        #loader { display: none; text-align: center; font-size: 12px; color: var(--hint-color); margin-top: 8px; }
+        #loader { text-align: center; padding: 20px; color: var(--hint); display: none; }
     </style>
 </head>
 <body>
 
-    <div class="card">
-        <div class="period-label">Сегодня</div>
-        <div class="stat-grid">
-            <div class="stat-item">
-                <span class="label">Заказы</span>
-                <span id="o-t-c" class="val orders">0 шт.</span>
-                <span id="o-t-s" style="font-size: 13px;">0 ₽</span>
+    <div class="tabs">
+        <div id="tab-sales" class="tab active" onclick="switchTab('sales')">Продажи</div>
+        <div id="tab-adv" class="tab" onclick="switchTab('adv')">Реклама</div>
+    </div>
+
+    <div id="loader">Загрузка...</div>
+
+    <div id="sales-content" class="content">
+        <div class="card">
+            <div class="period-label">Сегодня</div>
+            <div class="stat-grid">
+                <div><div style="font-size:12px; color:var(--hint)">Заказы</div><div id="o-t-c" class="val orders">0 шт.</div><div id="o-t-s" style="font-size:12px">0 ₽</div></div>
+                <div><div style="font-size:12px; color:var(--hint)">Выкупы</div><div id="s-t-c" class="val sales">0 шт.</div><div id="s-t-s" style="font-size:12px">0 ₽</div></div>
             </div>
-            <div class="stat-item">
-                <span class="label">Выкупы</span>
-                <span id="s-t-c" class="val sales">0 шт.</span>
-                <span id="s-t-s" style="font-size: 13px;">0 ₽</span>
-            </div>
-        </div>
-        <hr>
-        <div class="period-label">Вчера</div>
-        <div class="stat-grid">
-            <div class="stat-item">
-                <span id="o-y-c" class="val orders" style="font-size: 16px;">0 шт.</span>
-                <span id="o-y-s" style="font-size: 12px; color: var(--hint-color);">0 ₽</span>
-            </div>
-            <div class="stat-item">
-                <span id="s-y-c" class="val sales" style="font-size: 16px;">0 шт.</span>
-                <span id="s-y-s" style="font-size: 12px; color: var(--hint-color);">0 ₽</span>
+            <hr style="border:0; border-top:1px solid rgba(0,0,0,0.05); margin:15px 0;">
+            <div class="period-label">Вчера</div>
+            <div class="stat-grid" style="opacity:0.8">
+                <div><div id="o-y-c" style="font-weight:700">0 шт.</div><div id="o-y-s" style="font-size:12px">0 ₽</div></div>
+                <div><div id="s-y-c" style="font-weight:700">0 шт.</div><div id="s-y-s" style="font-size:12px">0 ₽</div></div>
             </div>
         </div>
     </div>
 
-    <button class="refresh-btn" onclick="loadStats()">Обновить</button>
-    <div id="loader">Синхронизация...</div>
+    <div id="adv-content" class="content" style="display:none">
+        <div class="card" id="adv-list">
+            <div class="period-label">Активная реклама (Сегодня)</div>
+            </div>
+    </div>
 
     <script>
         const tg = window.Telegram.WebApp;
-        const API_URL = "https://wb-backend-r049.onrender.com/stats";
+        const BASE_URL = "https://wb-backend-r049.onrender.com";
         tg.ready(); tg.expand();
 
-        async function loadStats() {
-            document.getElementById('loader').style.display = "block";
-            try {
-                const r = await fetch(API_URL);
-                const d = await r.json();
-                if(d.status === "success") {
-                    // Сегодня
-                    document.getElementById('o-t-c').innerText = d.today.orders.count + ' шт.';
-                    document.getElementById('o-t-s').innerText = d.today.orders.rev.toLocaleString() + ' ₽';
-                    document.getElementById('s-t-c').innerText = d.today.sales.count + ' шт.';
-                    document.getElementById('s-t-s').innerText = d.today.sales.rev.toLocaleString() + ' ₽';
-                    // Вчера
-                    document.getElementById('o-y-c').innerText = d.yesterday.orders.count + ' шт.';
-                    document.getElementById('o-y-s').innerText = d.yesterday.orders.rev.toLocaleString() + ' ₽';
-                    document.getElementById('s-y-c').innerText = d.yesterday.sales.count + ' шт.';
-                    document.getElementById('s-y-s').innerText = d.yesterday.sales.rev.toLocaleString() + ' ₽';
-                }
-            } catch(e) {} finally { document.getElementById('loader').style.display = "none"; }
+        function switchTab(type) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + type).classList.add('active');
+            
+            document.getElementById('sales-content').style.display = type === 'sales' ? 'block' : 'none';
+            document.getElementById('adv-content').style.display = type === 'adv' ? 'block' : 'none';
+            
+            if(type === 'adv') loadAdv();
+            else loadSales();
         }
-        loadStats();
+
+        async function loadSales() {
+            showLoader(true);
+            try {
+                const r = await fetch(BASE_URL + "/stats");
+                const d = await r.json();
+                document.getElementById('o-t-c').innerText = d.today.orders.count + ' шт.';
+                document.getElementById('o-t-s').innerText = d.today.orders.rev.toLocaleString() + ' ₽';
+                document.getElementById('s-t-c').innerText = d.today.sales.count + ' шт.';
+                document.getElementById('s-t-s').innerText = d.today.sales.rev.toLocaleString() + ' ₽';
+                document.getElementById('o-y-c').innerText = d.yesterday.orders.count + ' шт.';
+                document.getElementById('o-y-s').innerText = d.yesterday.orders.rev.toLocaleString() + ' ₽';
+                document.getElementById('s-y-c').innerText = d.yesterday.sales.count + ' шт.';
+                document.getElementById('s-y-s').innerText = d.yesterday.sales.rev.toLocaleString() + ' ₽';
+            } catch(e) {} finally { showLoader(false); }
+        }
+
+        async function loadAdv() {
+            showLoader(true);
+            const list = document.getElementById('adv-list');
+            try {
+                const r = await fetch(BASE_URL + "/adv");
+                const d = await r.json();
+                let html = '<div class="period-label">Активная реклама (Сегодня)</div>';
+                
+                if(d.campaigns && d.campaigns.length > 0) {
+                    d.campaigns.forEach(c => {
+                        html += `
+                        <div class="adv-item">
+                            <div class="adv-header">ID: ${c.id}</div>
+                            <div class="adv-grid">
+                                <div class="adv-metric"><span>CPM</span><span class="adv-val">${c.cpm}</span></div>
+                                <div class="adv-metric"><span>Показы</span><span class="adv-val">${c.views}</span></div>
+                                <div class="adv-metric"><span>CTR</span><span class="adv-val">${c.ctr}%</span></div>
+                                <div class="adv-metric"><span>Клики</span><span class="adv-val">${c.clicks}</span></div>
+                                <div class="adv-metric"><span>Расход</span><span class="adv-val">${c.sum} ₽</span></div>
+                                <div class="adv-metric"><span>Заказы</span><span class="adv-val">${c.orders}</span></div>
+                            </div>
+                        </div>`;
+                    });
+                } else { html += '<p style="font-size:13px; color:var(--hint)">Нет активных кампаний</p>'; }
+                list.innerHTML = html;
+            } catch(e) { list.innerHTML = 'Ошибка загрузки'; } finally { showLoader(false); }
+        }
+
+        function showLoader(v) { document.getElementById('loader').style.display = v ? 'block' : 'none'; }
+        
+        loadSales(); // Начальная загрузка
     </script>
 </body>
 </html>
