@@ -46,9 +46,12 @@ def get_wb_stats():
         if is_sales:
             # Для выкупов обычно используем finishedPrice (сколько реально заплатил клиент)
             # revenue = sum(i.get('finishedPrice', 0) for i in items)
+            # Моя эмперическая формула для заказов
             revenue = sum(i.get('totalPrice', 0) * (1 - (i.get('discountPercent', 0) - 1) / 100) for i in items)
         else:
-            # Твоя формула для заказов
+            # Для выкупов обычно используем finishedPrice (сколько реально заплатил клиент)
+            # revenue = sum(i.get('finishedPrice', 0) for i in items)
+            # Моя эмперическая формула для заказов
             revenue = sum(i.get('totalPrice', 0) * (1 - (i.get('discountPercent', 0) - 1) / 100) for i in items)
         return {"count": count, "rev": int(revenue)}
 
