@@ -15,41 +15,37 @@ def get_adv():
     offset = timezone(timedelta(hours=3))
     now = datetime.now(offset)
     
-    # Берем интервал в 7 дней, чтобы API точно "проснулось"
+    # Интервал 3 дня (сегодня, вчера, позавчера)
     date_to = now.strftime('%Y-%m-%d')
-    date_from = (now - timedelta(days=7)).strftime('%Y-%m-%d')
+    date_from = (now - timedelta(days=2)).strftime('%Y-%m-%d')
     
     target_ids = [28255817, 27952577]
-    
-    try:
-        # Самый актуальный метод для всех типов кампаний
-        url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
-        payload = [{"id": cid, "dates": [date_from, date_to]} for cid in target_ids]
-        
-        res = requests.post(url, headers=headers, json=payload, timeout=15)
-        
-        if res.status_code != 200:
-            return {"status": "error", "message": f"Код ответа WB: {res.status_code}"}
+    final_results = []
+
+    for cid in target_ids:
+        try:
+            # Опрашиваем КАЖДУЮ кампанию отдельным POST-запросом
+            url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
+            payload = [{"id": cid, "dates": [date_from, date_to]}]
             
-        raw_data = res.json()
-        final_results = []
-        
-        for item in raw_data:
-            cid = item.get('advertId')
-            days = item.get('days', [])
+            res = requests.post(url, headers=headers, json=payload, timeout=10)
             
-            # Фильтруем только те дни, где были реальные показы
-            active_days = [d for d in days if d.get('views', 0) > 0]
-            
-            # Берем данные за самый свежий активный день, либо просто за последний в списке
-            stats = active_days[-1] if active_days else (days[-1] if days else {})
+            stats = {}
+            if res.status_code == 200:
+                data = res.json()
+                if data and len(data) > 0:
+                    days = data[0].get('days', [])
+                    # Ищем самый свежий день с показами
+                    active_days = [d for d in days if d.get('views', 0) > 0]
+                    stats = active_days[-1] if active_days else (days[-1] if days else {})
             
             name = "Поиск" if cid == 28255817 else "АРК"
             
+            # Добавляем в результат, даже если данных нет (чтобы видеть статус)
             final_results.append({
                 "id": cid,
                 "name": name,
-                "status": "Идет" if stats.get('views', 0) > 0 else "Активна",
+                "status": "Идет" if stats.get('views', 0) > 0 else "Нет данных",
                 "views": stats.get('views', 0),
                 "clicks": stats.get('clicks', 0),
                 "ctr": stats.get('ctr', 0),
@@ -59,8 +55,7 @@ def get_adv():
                 "orders": stats.get('orders', 0),
                 "date": stats.get('date', date_to)
             })
+        except:
+            continue
 
-        return {"status": "success", "campaigns": final_results}
-
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    return {"status": "success", "campaigns": final_results}
