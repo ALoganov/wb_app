@@ -49,56 +49,62 @@ def get_stats():
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
     
-    # 1. Получаем список ID всех кампаний без фильтрации по статусу (v1/promotion/count)
-    adv_list_url = "https://advert-api.wildberries.ru/adv/v1/promotion/count"
-    adv_data = fetch_wb(adv_list_url, headers)
+    # 1. Получаем реальный список всех кампаний (метод /adverts более надежный)
+    # Статусы: 7 - завершена, 8 - отказался, 9 - идет, 11 - пауза
+    list_url = "https://advert-api.wildberries.ru/adv/v1/promotion/adverts"
+    all_campaigns = fetch_wb(list_url, headers)
     
-    if not adv_data or 'adverts' not in adv_data:
-        return {"status1": "error", "message": "Не удалось получить список кампаний"}
+    if not all_campaigns or not isinstance(all_campaigns, list):
+        # Если /adverts не сработал, пробуем /count как запасной
+        return {"status": "error", "message": "Не удалось получить список кампаний"}
 
-    campaign_ids = []
-    # Собираем ID из всех возможных групп (9 - идут, 11 - на паузе, 7 - завершены и т.д.)
-    for group in adv_data['adverts']:
-        for adv in group.get('advert_list', []):
-            cid = adv.get('advertId')
-            if cid:
-                campaign_ids.append(cid)
+    # Отбираем только те, что не удалены (например, статусы 9 и 11)
+    # И ограничимся последними 10, чтобы не "повесить" запрос
+    active_ids = [c.get('advertId') for c in all_campaigns if c.get('status') in [9, 11]]
+    
+    # Если активных нет, возьмем просто последние 5 любых для теста
+    if not active_ids:
+        active_ids = [c.get('advertId') for c in all_campaigns[-5:]]
 
-    if not campaign_ids:
-        return {"status1": "success", "campaigns": [], "msg": "Кампании не найдены в списке"}
+    if not active_ids:
+        return {"status": "success", "campaigns": [], "debug": "Кампании вообще не найдены"}
 
-    # 2. Запрашиваем статистику. 
-    # ВАЖНО: берем только последние 10-20 кампаний, чтобы не перегрузить API
+    # 2. Запрашиваем статистику через v2/fullstats
     stats_url = "https://advert-api.wildberries.ru/adv/v2/fullstats"
+    payload = [{"id": cid} for cid in active_ids]
     
-    # Мы запрашиваем список словарей [{"id": ...}, ...]
-    payload = [{"id": cid} for cid in campaign_ids[-15:]] 
-    stats_res = requests.post(stats_url, headers=headers, json=payload)
-    
-    result = []
-    if stats_res.status_code == 200:
+    try:
+        stats_res = requests.post(stats_url, headers=headers, json=payload, timeout=15)
+        if stats_res.status_code != 200:
+             return {"status": "error", "message": f"WB Stats Error: {stats_res.status_code}"}
+             
         raw_stats = stats_res.json()
-        
-        for c_stat in raw_stats:
-            days = c_stat.get('days', [])
-            # Если кампании старые, в списке 'days' может не быть сегодняшней даты.
-            # Берем самые свежие данные из имеющихся:
-            current_metrics = days[-1] if days else {}
-            
-            # Если данных за сегодня/вчера вообще нет в статистике, пропустим пустые
-            if not current_metrics and not c_stat.get('advertId'):
-                continue
+        result = []
 
+        # Создаем словарь для быстрого поиска имен кампаний
+        names = {c.get('advertId'): c.get('name') for c in all_campaigns}
+
+        for c_stat in raw_stats:
+            cid = c_stat.get('advertId')
+            days = c_stat.get('days', [])
+            
+            # Берем данные за сегодня (последний элемент в days)
+            # Если сегодня данных нет, берем вчера (индекс -1 всегда даст последнее событие)
+            current = days[-1] if days else {}
+            
             result.append({
-                "id": c_stat.get('advertId'),
-                "views": current_metrics.get('views', 0),
-                "clicks": current_metrics.get('clicks', 0),
-                "ctr": current_metrics.get('ctr', 0),
-                "cpm": current_metrics.get('cpm', 0),
-                "sum": current_metrics.get('sum', 0),
-                "atc": current_metrics.get('atc', 0),
-                "orders": current_metrics.get('orders', 0),
-                "date": current_metrics.get('date', 'Нет данных') # Посмотрим, за какое число данные
+                "id": cid,
+                "name": names.get(cid, "Без названия"),
+                "views": current.get('views', 0),
+                "clicks": current.get('clicks', 0),
+                "ctr": current.get('ctr', 0),
+                "cpm": current.get('cpm', 0),
+                "sum": current.get('sum', 0),
+                "atc": current.get('atc', 0),
+                "orders": current.get('orders', 0),
+                "date": current.get('date', 'Нет данных')
             })
 
-    return {"status1": "success", "campaigns": result}
+        return {"status": "success", "campaigns": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
