@@ -46,11 +46,11 @@ def get_stats():
 
     return {
         "today": {
-            "orders": calc(orders_raw, today_str, 'priceWithDiscount'),
+            "orders": calc(orders_raw, today_str, 'finishedPrice'),
             "sales": calc(sales_raw, today_str, 'forPay')
         },
         "yesterday": {
-            "orders": calc(orders_raw, yesterday_str, 'priceWithDiscount'),
+            "orders": calc(orders_raw, yesterday_str, 'finishedPrice'),
             "sales": calc(sales_raw, yesterday_str, 'forPay')
         }
     }
