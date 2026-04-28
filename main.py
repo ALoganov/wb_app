@@ -72,7 +72,7 @@ def get_adv():
         # 5. Обработка ответа
         adv_data = response.json()
 
-        print(json.dumps(data, indent=4, ensure_ascii=False))
+        #print(json.dumps(data, indent=4, ensure_ascii=False))
         
         if adv_data.status_code == 200 :
             #return adv_data['adverts'].get('status')
