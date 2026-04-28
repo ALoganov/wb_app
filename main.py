@@ -66,8 +66,8 @@ def get_adv():
         adv_data = requests.get(url, headers=headers, timeout=10)
                        
         if adv_data.status_code == 200 :
-            return adv_data['adverts'].get('status')
-            #return {"status": adv_data.status_code}
+            #return adv_data['adverts'].get('status')
+            return {"status": adv_data.status_code}
         else: 
             return {"statusE": adv_data.status_code}
             
