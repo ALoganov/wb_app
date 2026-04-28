@@ -66,11 +66,13 @@ def get_adv():
         #adv_data = requests.get(url, headers=headers, timeout=10)
 
         response = requests.get(url, headers=headers)
-        response.raise_for_status()  # Проверка на ошибки (4xx, 5xx)
+        #response.raise_for_status()  # Проверка на ошибки (4xx, 5xx)
 
         # 5. Обработка ответа
         adv_data = response.json()
-                       
+
+        print(json.dumps(data, indent=4, ensure_ascii=False))
+        
         if adv_data.status_code == 200 :
             #return adv_data['adverts'].get('status')
             if not adv_data: return {"status": "error", "message": "Нет данных по рекламе ", "code": adv_data.status_code}
