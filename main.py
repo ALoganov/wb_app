@@ -63,7 +63,13 @@ def get_adv():
     url=f"https://advert-api.wildberries.ru/adv/v1/promotion/count"
 
     try:
-        adv_data = requests.get(url, headers=headers, timeout=10)
+        #adv_data = requests.get(url, headers=headers, timeout=10)
+
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()  # Проверка на ошибки (4xx, 5xx)
+
+        # 5. Обработка ответа
+        adv_data = response.json()
                        
         if adv_data.status_code == 200 :
             #return adv_data['adverts'].get('status')
