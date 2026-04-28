@@ -75,8 +75,8 @@ def get_adv():
             #return adv_data['adverts'].get('status')
             if not adv_data: return {"status": "error", "message": "Нет данных по рекламе ", "code": adv_data.status_code}
 
-            if 'adverts' in adv_data: return {"status_adv": adv_data.status_code}
-            else: return {"status_not_adv": adv_data.status_code}
+            if 'adverts' in adv_data: return {"status_adv1": adv_data.status_code}
+            else: return {"status_not_adv1": adv_data.status_code}
             #if 'adverts' in adv_data:
                 #for advert in data['adverts']:
             #return {"adv_data": adv_data, "status": adv_data.status_code}
