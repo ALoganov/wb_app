@@ -58,6 +58,23 @@ def get_stats():
 @app.get("/adv")
 def get_adv():
     headers = {"Authorization": WB_TOKEN}
+
+    #debugging
+    url=f"https://advert-api.wildberries.ru/adv/v1/promotion/count"
+
+    try:
+        res = requests.get(url, headers=headers, timeout=10)
+                       
+        if res.status_code == 200 :
+            return {"status": res.status_code}
+        else: 
+            return {"statusE": res.status_code}
+            
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+    #debugging
+    
     # Твои подтвержденные ID кампаний
     target_ids = [
         {"id": 28255817, "name": "Поиск"},
