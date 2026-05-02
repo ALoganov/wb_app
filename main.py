@@ -76,11 +76,12 @@ def get_adv():
     if not count_data:
         return {"status": "error", "campaigns": [], "message": "Не удалось получить список кампаний"}
 
-    # Собираем id всех кампаний (любые статусы)
+    # Собираем id только активных кампаний (status=9)
     all_ids = []
     for group in count_data.get("adverts", []):
-        for advert in group.get("advert_list", []):
-            all_ids.append(advert["advertId"])
+        if group.get("status") == 9:
+            for advert in group.get("advert_list", []):
+                all_ids.append(advert["advertId"])
 
     if not all_ids:
         return {"status": "success", "campaigns": []}
@@ -104,14 +105,15 @@ def get_adv():
 
     # 3. Получаем статистику за сегодня — GET /adv/v3/fullstats
     offset = timezone(timedelta(hours=3))
-    today_str = datetime.now(offset).strftime("%Y-%m-%d")
+    display_date = datetime.now(offset).strftime("%Y-%m-%d")
 
     # /adv/v3/fullstats — GET, ids через запятую
+    api_date = datetime.now(offset).strftime("%d-%m-%Y")
     ids_str = ",".join(str(x) for x in all_ids)
     stats_res = requests.get(
         "https://advert-api.wildberries.ru/adv/v3/fullstats",
         headers=headers,
-        params={"ids": ids_str, "dateFrom": today_str, "dateTo": today_str},
+        params={"ids": ids_str, "dateFrom": api_date, "dateTo": api_date},
         timeout=15,
     )
     print(f"[DEBUG] stats status={stats_res.status_code} body={stats_res.text[:400]}")
@@ -157,7 +159,7 @@ def get_adv():
             "sum": round(spend, 2),
             "atc": atc,
             "orders": orders,
-            "date": today_str,
+            "date": display_date,
         })
 
     # Активные кампании — первыми
