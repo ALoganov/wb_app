@@ -85,31 +85,36 @@ def get_adv():
     if not all_ids:
         return {"status": "success", "campaigns": []}
 
-    # 2. Получаем детали кампаний (API принимает до 50 id за раз)
+    # 2. Получаем детали кампаний — GET /api/advert/v2/adverts?ids=1,2,3 (до 50 за раз)
     details_map = {}
     for i in range(0, len(all_ids), 50):
         chunk = all_ids[i:i + 50]
-        details = fetch_wb_post(
-            "https://advert-api.wildberries.ru/adv/v1/promotion/adverts",
-            headers,
-            chunk,
+        ids_str = ",".join(str(x) for x in chunk)
+        res = requests.get(
+            "https://advert-api.wildberries.ru/api/advert/v2/adverts",
+            headers=headers,
+            params={"ids": ids_str},
+            timeout=15,
         )
-        print(f"[DEBUG] details response: {str(details)[:400]}")
-        if details:
-            for d in details:
-                details_map[d["advertId"]] = d
+        print(f"[DEBUG] details status={res.status_code} body={res.text[:300]}")
+        if res.status_code == 200:
+            data = res.json()
+            for d in (data.get("adverts") or []):
+                details_map[d["id"]] = d
 
-    # 3. Получаем статистику за сегодня
+    # 3. Получаем статистику за сегодня — GET /adv/v3/fullstats
     offset = timezone(timedelta(hours=3))
     today_str = datetime.now(offset).strftime("%Y-%m-%d")
 
     stats_payload = [{"id": cid, "dates": [today_str, today_str]} for cid in all_ids]
-    stats_raw = fetch_wb_post(
-        "https://advert-api.wildberries.ru/adv/v2/fullstats",
-        headers,
-        stats_payload,
-    ) or []
-    print(f"[DEBUG] stats_raw: {str(stats_raw)[:400]}")
+    stats_res = requests.post(
+        "https://advert-api.wildberries.ru/adv/v3/fullstats",
+        headers=headers,
+        json=stats_payload,
+        timeout=15,
+    )
+    print(f"[DEBUG] stats status={stats_res.status_code} body={stats_res.text[:300]}")
+    stats_raw = stats_res.json() if stats_res.status_code == 200 else []
 
     stats_map = {item["advertId"]: item for item in stats_raw}
 
@@ -138,10 +143,12 @@ def get_adv():
         ctr = round(clicks / views * 100, 2) if views > 0 else 0.0
 
         status_code = detail.get("status", 0)
+        # Новый API: имя внутри settings.name
+        name = (detail.get("settings") or {}).get("name") or f"Кампания {cid}"
 
         final_results.append({
             "id": cid,
-            "name": detail.get("name", f"Кампания {cid}"),
+            "name": name,
             "status": STATUS_LABELS.get(status_code, f"Статус {status_code}"),
             "views": views,
             "clicks": clicks,
