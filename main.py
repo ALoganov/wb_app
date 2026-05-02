@@ -106,17 +106,20 @@ def get_adv():
     offset = timezone(timedelta(hours=3))
     today_str = datetime.now(offset).strftime("%Y-%m-%d")
 
-    stats_payload = [{"id": cid, "dates": [today_str, today_str]} for cid in all_ids]
-    stats_res = requests.post(
+    # /adv/v3/fullstats — GET, params: id (repeated), dateFrom, dateTo
+    stats_params = [("dateFrom", today_str), ("dateTo", today_str)]
+    for cid in all_ids:
+        stats_params.append(("id", cid))
+    stats_res = requests.get(
         "https://advert-api.wildberries.ru/adv/v3/fullstats",
         headers=headers,
-        json=stats_payload,
+        params=stats_params,
         timeout=15,
     )
-    print(f"[DEBUG] stats status={stats_res.status_code} body={stats_res.text[:300]}")
+    print(f"[DEBUG] stats status={stats_res.status_code} body={stats_res.text[:400]}")
     stats_raw = stats_res.json() if stats_res.status_code == 200 else []
 
-    stats_map = {item["advertId"]: item for item in stats_raw}
+    stats_map = {item["advertId"]: item for item in (stats_raw if isinstance(stats_raw, list) else [])}
 
     # 4. Статус → читаемый текст
     STATUS_LABELS = {
