@@ -1,13 +1,11 @@
 import os
 import requests
-import json
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta, timezone
 
 app = FastAPI()
 
-# Разрешаем запросы из Telegram
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -24,106 +22,135 @@ def fetch_wb(url, headers, params=None):
     except:
         return None
 
+def fetch_wb_post(url, headers, payload):
+    try:
+        res = requests.post(url, headers=headers, json=payload, timeout=15)
+        return res.json() if res.status_code == 200 else None
+    except:
+        return None
+
+
 @app.get("/stats")
 def get_stats():
     headers = {"Authorization": WB_TOKEN}
-    offset = timezone(timedelta(hours=3)) # Московское время
+    offset = timezone(timedelta(hours=3))
     now = datetime.now(offset)
-    
+
     today_str = now.strftime('%Y-%m-%d')
     yesterday_str = (now - timedelta(days=1)).strftime('%Y-%m-%d')
 
-    # Загружаем заказы и продажи (за последние 2 дня для надежности)
     date_from = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0).isoformat()
-    
+
     orders_raw = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/orders", headers, {"dateFrom": date_from}) or []
     sales_raw = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/sales", headers, {"dateFrom": date_from}) or []
 
     def calc(data, date_str, key):
         items = [item for item in data if item.get('date', '').startswith(date_str)]
-        count = len(items)
-        rev = sum(item.get(key, 0) for item in items)
-        return {"count": count, "rev": int(rev)}
+        return {"count": len(items), "rev": int(sum(item.get(key, 0) for item in items))}
 
     return {
         "today": {
             "orders": calc(orders_raw, today_str, 'finishedPrice'),
-            "sales": calc(sales_raw, today_str, 'forPay')
+            "sales": calc(sales_raw, today_str, 'forPay'),
         },
         "yesterday": {
             "orders": calc(orders_raw, yesterday_str, 'finishedPrice'),
-            "sales": calc(sales_raw, yesterday_str, 'forPay')
-        }
+            "sales": calc(sales_raw, yesterday_str, 'forPay'),
+        },
     }
+
 
 @app.get("/adv")
 def get_adv():
-    headers = {"Authorization": WB_TOKEN}
+    headers = {
+        "Authorization": WB_TOKEN,
+        "Content-Type": "application/json",
+    }
 
-    #debugging
-    url=f"https://advert-api.wildberries.ru/adv/v1/promotion/count"
+    # 1. Получаем список всех кампаний
+    count_data = fetch_wb("https://advert-api.wildberries.ru/adv/v1/promotion/count", headers)
+    if not count_data:
+        return {"status": "error", "campaigns": [], "message": "Не удалось получить список кампаний"}
 
-    try:
-        resp = requests.get(url, headers=HEADERS)
-        resp.raise_for_status()
-        data = resp.json()
- 
-        campaigns = []
-        for group in data.get("adverts", []):
-            for advert in group.get("advert_list", []):
-                campaigns.append(advert)
- 
-        if status is not None:
-            campaigns = [c for c in campaigns if c.get("status") == status]
+    # Собираем id всех кампаний (любые статусы)
+    all_ids = []
+    for group in count_data.get("adverts", []):
+        for advert in group.get("advert_list", []):
+            all_ids.append(advert["advertId"])
 
-        return {"Всего кампаний": len(campaigns)}
-            
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
+    if not all_ids:
+        return {"status": "success", "campaigns": []}
 
-    #debugging
-    
-    # Твои подтвержденные ID кампаний
-    target_ids = [
-        {"id": 28255817, "name": "Поиск"},
-        {"id": 27952577, "name": "АРК"}
-    ]
-    
+    # 2. Получаем детали кампаний (API принимает до 50 id за раз)
+    details_map = {}
+    for i in range(0, len(all_ids), 50):
+        chunk = all_ids[i:i + 50]
+        details = fetch_wb_post(
+            "https://advert-api.wildberries.ru/adv/v1/promotion/adverts",
+            headers,
+            chunk,
+        )
+        if details:
+            for d in details:
+                details_map[d["advertId"]] = d
+
+    # 3. Получаем статистику за сегодня
+    offset = timezone(timedelta(hours=3))
+    today_str = datetime.now(offset).strftime("%Y-%m-%d")
+
+    stats_payload = [{"id": cid, "dates": [today_str, today_str]} for cid in all_ids]
+    stats_raw = fetch_wb_post(
+        "https://advert-api.wildberries.ru/adv/v2/fullstats",
+        headers,
+        stats_payload,
+    ) or []
+
+    stats_map = {item["advertId"]: item for item in stats_raw}
+
+    # 4. Статус → читаемый текст
+    STATUS_LABELS = {
+        4: "Готова к запуску",
+        7: "Завершена",
+        8: "Отказалась",
+        9: "Идет показ",
+        11: "Приостановлена",
+    }
+
+    # 5. Собираем итоговый список
     final_results = []
+    for cid in all_ids:
+        detail = details_map.get(cid, {})
+        stat = stats_map.get(cid, {})
 
-    for item in target_ids:
-        cid = item["id"]
-        # Используем индивидуальный GET запрос - самый стабильный метод для разных типов кампаний
-        url = f"https://advert-api.wildberries.ru/adv/v1/fullstat?id={cid}"
-        
-        try:
-            res = requests.get(url, headers=headers, timeout=10)
-            best_stats = {}
-            
-            if res.status_code == 200:
-                days = res.json().get('days', [])
-                if days:
-                    # Ищем последний день, где были показы, чтобы не показывать нули по воскресеньям
-                    active_days = [d for d in days if d.get('views', 0) > 0]
-                    best_stats = active_days[-1] if active_days else days[-1]
+        # Суммируем метрики по всем дням в статистике
+        days = stat.get("days", [])
+        views = sum(d.get("views", 0) for d in days)
+        clicks = sum(d.get("clicks", 0) for d in days)
+        spend = sum(d.get("sum", 0) for d in days)
+        atc = sum(d.get("atbs", 0) for d in days)       # добавлено в корзину
+        orders = sum(d.get("orders", 0) for d in days)
+        ctr = round(clicks / views * 100, 2) if views > 0 else 0.0
 
-            final_results.append({
-                "id": cid,
-                "name": item["name"],
-                "status": "Идет" if best_stats.get('views', 0) > 0 else "Активна",
-                "views": best_stats.get('views', 0),
-                "clicks": best_stats.get('clicks', 0),
-                "ctr": best_stats.get('ctr', 0),
-                "cpm": best_stats.get('cpm', 0),
-                "sum": int(best_stats.get('sum', 0)),
-                "atc": best_stats.get('atc', 0),
-                "orders": best_stats.get('orders', 0),
-                "date": best_stats.get('date', "Нет данных")
-            })
-        except:
-            continue
+        status_code = detail.get("status", 0)
+
+        final_results.append({
+            "id": cid,
+            "name": detail.get("name", f"Кампания {cid}"),
+            "status": STATUS_LABELS.get(status_code, f"Статус {status_code}"),
+            "views": views,
+            "clicks": clicks,
+            "ctr": ctr,
+            "sum": round(spend, 2),
+            "atc": atc,
+            "orders": orders,
+            "date": today_str,
+        })
+
+    # Активные кампании — первыми
+    final_results.sort(key=lambda x: (0 if "Идет" in x["status"] else 1, -x["views"]))
 
     return {"status": "success", "campaigns": final_results}
+
 
 if __name__ == "__main__":
     import uvicorn
