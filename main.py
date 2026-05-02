@@ -108,12 +108,13 @@ def get_adv():
     display_date = datetime.now(offset).strftime("%Y-%m-%d")
 
     # /adv/v3/fullstats — GET, ids через запятую
-    api_date = datetime.now(offset).strftime("%d-%m-%Y")
+    display_date = datetime.now(offset).strftime("%Y-%m-%d")
+    api_date = display_date  # формат YYYY-MM-DD, параметры beginDate/endDate
     ids_str = ",".join(str(x) for x in all_ids)
     stats_res = requests.get(
         "https://advert-api.wildberries.ru/adv/v3/fullstats",
         headers=headers,
-        params={"ids": ids_str, "dateFrom": api_date, "dateTo": api_date},
+        params={"ids": ids_str, "beginDate": api_date, "endDate": api_date},
         timeout=15,
     )
     print(f"[DEBUG] stats status={stats_res.status_code} body={stats_res.text[:400]}")
