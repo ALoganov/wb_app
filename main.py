@@ -25,8 +25,12 @@ def fetch_wb(url, headers, params=None):
 def fetch_wb_post(url, headers, payload):
     try:
         res = requests.post(url, headers=headers, json=payload, timeout=15)
-        return res.json() if res.status_code == 200 else None
-    except:
+        if res.status_code != 200:
+            print(f"[POST ERROR] {url} → {res.status_code}: {res.text[:300]}")
+            return None
+        return res.json()
+    except Exception as e:
+        print(f"[POST EXCEPTION] {url} → {e}")
         return None
 
 
@@ -90,6 +94,7 @@ def get_adv():
             headers,
             chunk,
         )
+        print(f"[DEBUG] details response: {str(details)[:400]}")
         if details:
             for d in details:
                 details_map[d["advertId"]] = d
@@ -104,6 +109,7 @@ def get_adv():
         headers,
         stats_payload,
     ) or []
+    print(f"[DEBUG] stats_raw: {str(stats_raw)[:400]}")
 
     stats_map = {item["advertId"]: item for item in stats_raw}
 
