@@ -106,14 +106,12 @@ def get_adv():
     offset = timezone(timedelta(hours=3))
     today_str = datetime.now(offset).strftime("%Y-%m-%d")
 
-    # /adv/v3/fullstats — GET, params: id (repeated), dateFrom, dateTo
-    stats_params = [("dateFrom", today_str), ("dateTo", today_str)]
-    for cid in all_ids:
-        stats_params.append(("id", cid))
+    # /adv/v3/fullstats — GET, ids через запятую
+    ids_str = ",".join(str(x) for x in all_ids)
     stats_res = requests.get(
         "https://advert-api.wildberries.ru/adv/v3/fullstats",
         headers=headers,
-        params=stats_params,
+        params={"ids": ids_str, "dateFrom": today_str, "dateTo": today_str},
         timeout=15,
     )
     print(f"[DEBUG] stats status={stats_res.status_code} body={stats_res.text[:400]}")
