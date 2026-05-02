@@ -76,7 +76,7 @@ def get_adv():
         if status is not None:
             campaigns = [c for c in campaigns if c.get("status") == status]
 
-        return campaigns
+        return {"Всего кампаний": len(campaigns)}
             
         except Exception as e:
             return {"status": "error", "message": str(e)}
