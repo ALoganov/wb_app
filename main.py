@@ -64,33 +64,22 @@ def get_adv():
     url=f"https://advert-api.wildberries.ru/adv/v1/promotion/count"
 
     try:
-        adv_data = requests.get(url, headers=headers, timeout=10)
-
-        #response = requests.get(url, headers=headers)
-        #response.raise_for_status()  # Проверка на ошибки (4xx, 5xx)
-
-        # 5. Обработка ответа
-        #adv_data = response.json()
-
-        #print(json.dumps(data, indent=4, ensure_ascii=False))
-        
-        if adv_data.status_code == 200 :
-            #return adv_data['adverts'].get('status')
-            if not adv_data: return {"status": "error", "message": "Нет данных по рекламе ", "code": adv_data.status_code}
-
-            if 'adverts' in adv_data: return {"status_adv1": adv_data.status_code}
-            else: return {"status_not_adv1": adv_data.status_code}
-            #if 'adverts' in adv_data:
-                #for advert in data['adverts']:
-            #return {"adv_data": adv_data, "status": adv_data.status_code}
+        resp = requests.get(url, headers=HEADERS)
+        resp.raise_for_status()
+        data = resp.json()
  
+        campaigns = []
+        for group in data.get("adverts", []):
+            for advert in group.get("advert_list", []):
+                campaigns.append(advert)
+ 
+        if status is not None:
+            campaigns = [c for c in campaigns if c.get("status") == status]
+
+        return campaigns
             
-            #return {"status": adv_data.status_code}
-        else: 
-            return {"statusE": adv_data.status_code}
-            
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
 
     #debugging
     
