@@ -54,7 +54,6 @@ def get_stats():
     now = datetime.now(offset)
     today_str = now.strftime('%Y-%m-%d')
 
-    # Ключ кэша привязан к дате — при смене дня кэш автоматически устаревает
     cache_key = f"stats:{today_str}"
     cached = cache_get(cache_key)
     if cached:
@@ -62,23 +61,56 @@ def get_stats():
 
     headers = {"Authorization": WB_TOKEN}
     yesterday_str = (now - timedelta(days=1)).strftime('%Y-%m-%d')
-    date_from = (now - timedelta(days=1)).replace(hour=0, minute=0, second=0).isoformat()
+
+    # Начало текущей недели (понедельник)
+    this_monday = now - timedelta(days=now.weekday())  # weekday(): 0=пн, 6=вс
+    this_monday = this_monday.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Прошлая неделя: пн–вс
+    last_monday = this_monday - timedelta(weeks=1)
+    last_sunday = this_monday - timedelta(days=1)
+
+    # Самая ранняя дата которая нам нужна — понедельник прошлой недели
+    date_from = last_monday.isoformat()
 
     orders_raw = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/orders", headers, {"dateFrom": date_from}) or []
     sales_raw  = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/sales",  headers, {"dateFrom": date_from}) or []
 
-    def calc(data, date_str, key):
+    def calc_day(data, date_str, key):
+        """Статистика за один день."""
         items = [item for item in data if item.get('date', '').startswith(date_str)]
+        return {"count": len(items), "rev": int(sum(item.get(key, 0) for item in items))}
+
+    def calc_range(data, date_from_dt, date_to_dt, key):
+        """Статистика за диапазон дат (включительно)."""
+        items = [
+            item for item in data
+            if date_from_dt.strftime('%Y-%m-%d') <= item.get('date', '')[:10] <= date_to_dt.strftime('%Y-%m-%d')
+        ]
         return {"count": len(items), "rev": int(sum(item.get(key, 0) for item in items))}
 
     result = {
         "today": {
-            "orders": calc(orders_raw, today_str,     'finishedPrice'),
-            "sales":  calc(sales_raw,  today_str,     'forPay'),
+            "orders": calc_day(orders_raw, today_str, 'finishedPrice'),
+            "sales":  calc_day(sales_raw,  today_str, 'forPay'),
         },
         "yesterday": {
-            "orders": calc(orders_raw, yesterday_str, 'finishedPrice'),
-            "sales":  calc(sales_raw,  yesterday_str, 'forPay'),
+            "orders": calc_day(orders_raw, yesterday_str, 'finishedPrice'),
+            "sales":  calc_day(sales_raw,  yesterday_str, 'forPay'),
+        },
+        # Текущая неделя: с понедельника по сегодня
+        "this_week": {
+            "orders": calc_range(orders_raw, this_monday, now, 'finishedPrice'),
+            "sales":  calc_range(sales_raw,  this_monday, now, 'forPay'),
+            "from":   this_monday.strftime('%Y-%m-%d'),
+            "to":     today_str,
+        },
+        # Прошлая неделя: пн–вс
+        "last_week": {
+            "orders": calc_range(orders_raw, last_monday, last_sunday, 'finishedPrice'),
+            "sales":  calc_range(sales_raw,  last_monday, last_sunday, 'forPay'),
+            "from":   last_monday.strftime('%Y-%m-%d'),
+            "to":     last_sunday.strftime('%Y-%m-%d'),
         },
     }
     cache_set(cache_key, result)
