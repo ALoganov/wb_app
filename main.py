@@ -78,8 +78,8 @@ def collect_sales():
     headers = {"Authorization": WB_TOKEN}
     now = datetime.now(MSK)
 
-    # Берём данные за последние 8 дней (с запасом на прошлую неделю)
-    date_from = (now - timedelta(days=8)).replace(hour=0, minute=0, second=0).isoformat()
+    # Берём данные за последние 14 дней (чтобы покрыть полную прошлую неделю)
+    date_from = (now - timedelta(days=14)).replace(hour=0, minute=0, second=0).isoformat()
 
     orders_raw = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/orders", headers, {"dateFrom": date_from}) or []
     sales_raw  = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/sales",  headers, {"dateFrom": date_from}) or []
