@@ -3,7 +3,10 @@ import requests
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timedelta, timezone
-from typing import Any
+from apscheduler.schedulers.background import BackgroundScheduler
+import psycopg2
+from psycopg2.extras import RealDictCursor
+import json
 
 app = FastAPI()
 
@@ -14,31 +17,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-WB_TOKEN = os.getenv("WB_TOKEN_KEY")
-CACHE_TTL = 30 * 60  # 30 минут в секундах
+WB_TOKEN   = os.getenv("WB_TOKEN_KEY")
+DB_URL     = os.getenv("DATABASE_URL")
+MSK        = timezone(timedelta(hours=3))
 
-# ─── Простой in-memory кэш ────────────────────────────────────────────
-_cache: dict[str, dict] = {}
 
-def cache_get(key: str) -> Any | None:
-    entry = _cache.get(key)
-    if not entry:
-        return None
-    if (datetime.utcnow() - entry["ts"]).total_seconds() > CACHE_TTL:
-        del _cache[key]
-        return None
-    print(f"[CACHE HIT] {key}")
-    return entry["data"]
+# ─── БД ───────────────────────────────────────────────────────────────
 
-def cache_set(key: str, data: Any):
-    _cache[key] = {"ts": datetime.utcnow(), "data": data}
-    print(f"[CACHE SET] {key}")
+def get_conn():
+    return psycopg2.connect(DB_URL, cursor_factory=RealDictCursor)
 
-def cache_invalidate(key: str):
-    _cache.pop(key, None)
-    print(f"[CACHE DEL] {key}")
-# ──────────────────────────────────────────────────────────────────────
+def init_db():
+    """Создаём таблицы если их нет."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS daily_stats (
+                    date        DATE PRIMARY KEY,
+                    orders_count INT  DEFAULT 0,
+                    orders_rev   INT  DEFAULT 0,
+                    sales_count  INT  DEFAULT 0,
+                    sales_rev    INT  DEFAULT 0,
+                    updated_at   TIMESTAMPTZ DEFAULT now()
+                );
 
+                CREATE TABLE IF NOT EXISTS adv_stats (
+                    id          SERIAL PRIMARY KEY,
+                    date        DATE NOT NULL,
+                    campaign_id BIGINT NOT NULL,
+                    name        TEXT,
+                    status      TEXT,
+                    views       INT  DEFAULT 0,
+                    clicks      INT  DEFAULT 0,
+                    ctr         NUMERIC(6,2) DEFAULT 0,
+                    spend       NUMERIC(12,2) DEFAULT 0,
+                    atc         INT  DEFAULT 0,
+                    orders      INT  DEFAULT 0,
+                    updated_at  TIMESTAMPTZ DEFAULT now(),
+                    UNIQUE (date, campaign_id)
+                );
+            """)
+        conn.commit()
+    print("[DB] Таблицы готовы")
+
+
+# ─── WB helpers ───────────────────────────────────────────────────────
 
 def fetch_wb(url, headers, params=None):
     try:
@@ -48,94 +71,63 @@ def fetch_wb(url, headers, params=None):
         return None
 
 
-@app.get("/stats")
-def get_stats():
-    offset = timezone(timedelta(hours=3))
-    now = datetime.now(offset)
-    today_str = now.strftime('%Y-%m-%d')
+# ─── Сборщик статистики продаж ────────────────────────────────────────
 
-    cache_key = f"stats:{today_str}"
-    cached = cache_get(cache_key)
-    if cached:
-        return cached
-
+def collect_sales():
+    print("[Scheduler] Сбор статистики продаж...")
     headers = {"Authorization": WB_TOKEN}
-    yesterday_str = (now - timedelta(days=1)).strftime('%Y-%m-%d')
+    now = datetime.now(MSK)
 
-    # Начало текущей недели (понедельник)
-    this_monday = now - timedelta(days=now.weekday())  # weekday(): 0=пн, 6=вс
-    this_monday = this_monday.replace(hour=0, minute=0, second=0, microsecond=0)
-
-    # Прошлая неделя: пн–вс
-    last_monday = this_monday - timedelta(weeks=1)
-    last_sunday = this_monday - timedelta(days=1)
-
-    # Самая ранняя дата которая нам нужна — понедельник прошлой недели
-    date_from = last_monday.isoformat()
+    # Берём данные за последние 8 дней (с запасом на прошлую неделю)
+    date_from = (now - timedelta(days=8)).replace(hour=0, minute=0, second=0).isoformat()
 
     orders_raw = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/orders", headers, {"dateFrom": date_from}) or []
     sales_raw  = fetch_wb("https://statistics-api.wildberries.ru/api/v1/supplier/sales",  headers, {"dateFrom": date_from}) or []
 
-    def calc_day(data, date_str, key):
-        """Статистика за один день."""
-        items = [item for item in data if item.get('date', '').startswith(date_str)]
-        return {"count": len(items), "rev": int(sum(item.get(key, 0) for item in items))}
+    # Группируем по датам
+    days = set()
+    for item in orders_raw + sales_raw:
+        d = item.get("date", "")[:10]
+        if d:
+            days.add(d)
 
-    def calc_range(data, date_from_dt, date_to_dt, key):
-        """Статистика за диапазон дат (включительно)."""
-        items = [
-            item for item in data
-            if date_from_dt.strftime('%Y-%m-%d') <= item.get('date', '')[:10] <= date_to_dt.strftime('%Y-%m-%d')
-        ]
-        return {"count": len(items), "rev": int(sum(item.get(key, 0) for item in items))}
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for day in days:
+                o_items = [i for i in orders_raw if i.get("date", "").startswith(day)]
+                s_items = [i for i in sales_raw  if i.get("date", "").startswith(day)]
 
-    result = {
-        "today": {
-            "orders": calc_day(orders_raw, today_str, 'finishedPrice'),
-            "sales":  calc_day(sales_raw,  today_str, 'forPay'),
-        },
-        "yesterday": {
-            "orders": calc_day(orders_raw, yesterday_str, 'finishedPrice'),
-            "sales":  calc_day(sales_raw,  yesterday_str, 'forPay'),
-        },
-        # Текущая неделя: с понедельника по сегодня
-        "this_week": {
-            "orders": calc_range(orders_raw, this_monday, now, 'finishedPrice'),
-            "sales":  calc_range(sales_raw,  this_monday, now, 'forPay'),
-            "from":   this_monday.strftime('%Y-%m-%d'),
-            "to":     today_str,
-        },
-        # Прошлая неделя: пн–вс
-        "last_week": {
-            "orders": calc_range(orders_raw, last_monday, last_sunday, 'finishedPrice'),
-            "sales":  calc_range(sales_raw,  last_monday, last_sunday, 'forPay'),
-            "from":   last_monday.strftime('%Y-%m-%d'),
-            "to":     last_sunday.strftime('%Y-%m-%d'),
-        },
-    }
-    cache_set(cache_key, result)
-    return result
+                cur.execute("""
+                    INSERT INTO daily_stats (date, orders_count, orders_rev, sales_count, sales_rev, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, now())
+                    ON CONFLICT (date) DO UPDATE SET
+                        orders_count = EXCLUDED.orders_count,
+                        orders_rev   = EXCLUDED.orders_rev,
+                        sales_count  = EXCLUDED.sales_count,
+                        sales_rev    = EXCLUDED.sales_rev,
+                        updated_at   = now()
+                """, (
+                    day,
+                    len(o_items),
+                    int(sum(i.get("finishedPrice", 0) for i in o_items)),
+                    len(s_items),
+                    int(sum(i.get("forPay", 0) for i in s_items)),
+                ))
+        conn.commit()
+    print(f"[Scheduler] Продажи сохранены: {len(days)} дней")
 
 
-@app.get("/adv")
-def get_adv():
-    offset = timezone(timedelta(hours=3))
-    today_str = datetime.now(offset).strftime("%Y-%m-%d")
+# ─── Сборщик рекламной статистики ─────────────────────────────────────
 
-    cache_key = f"adv:{today_str}"
-    cached = cache_get(cache_key)
-    if cached:
-        return cached
+def collect_adv():
+    print("[Scheduler] Сбор рекламной статистики...")
+    headers = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
+    today = datetime.now(MSK).strftime("%Y-%m-%d")
 
-    headers = {
-        "Authorization": WB_TOKEN,
-        "Content-Type": "application/json",
-    }
-
-    # 1. Список активных кампаний
     count_data = fetch_wb("https://advert-api.wildberries.ru/adv/v1/promotion/count", headers)
     if not count_data:
-        return {"status": "error", "campaigns": [], "message": "Не удалось получить список кампаний"}
+        print("[Scheduler] Не удалось получить список кампаний")
+        return
 
     all_ids = []
     for group in count_data.get("adverts", []):
@@ -144,14 +136,13 @@ def get_adv():
                 all_ids.append(advert["advertId"])
 
     if not all_ids:
-        result = {"status": "success", "campaigns": []}
-        cache_set(cache_key, result)
-        return result
+        print("[Scheduler] Нет активных кампаний")
+        return
 
-    # 2. Детали кампаний (батчами по 50)
+    # Детали
     details_map = {}
     for i in range(0, len(all_ids), 50):
-        chunk = all_ids[i:i + 50]
+        chunk = all_ids[i:i+50]
         res = requests.get(
             "https://advert-api.wildberries.ru/api/advert/v2/adverts",
             headers=headers,
@@ -162,11 +153,11 @@ def get_adv():
             for d in (res.json().get("adverts") or []):
                 details_map[d["id"]] = d
 
-    # 3. Статистика за сегодня
+    # Статистика
     stats_res = requests.get(
         "https://advert-api.wildberries.ru/adv/v3/fullstats",
         headers=headers,
-        params={"ids": ",".join(str(x) for x in all_ids), "beginDate": today_str, "endDate": today_str},
+        params={"ids": ",".join(str(x) for x in all_ids), "beginDate": today, "endDate": today},
         timeout=15,
     )
     stats_raw = stats_res.json() if stats_res.status_code == 200 else []
@@ -174,48 +165,180 @@ def get_adv():
 
     STATUS_LABELS = {4: "Готова к запуску", 7: "Завершена", 8: "Отказалась", 9: "Идет показ", 11: "Приостановлена"}
 
-    # 4. Сборка результата
-    final_results = []
-    for cid in all_ids:
-        detail = details_map.get(cid, {})
-        stat   = stats_map.get(cid, {})
-        days   = stat.get("days", [])
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            for cid in all_ids:
+                detail = details_map.get(cid, {})
+                stat   = stats_map.get(cid, {})
+                days   = stat.get("days", [])
 
-        views  = sum(d.get("views",  0) for d in days)
-        clicks = sum(d.get("clicks", 0) for d in days)
-        spend  = sum(d.get("sum",    0) for d in days)
-        atc    = sum(d.get("atbs",   0) for d in days)
-        orders = sum(d.get("orders", 0) for d in days)
-        ctr    = round(clicks / views * 100, 2) if views > 0 else 0.0
+                views  = sum(d.get("views",  0) for d in days)
+                clicks = sum(d.get("clicks", 0) for d in days)
+                spend  = sum(d.get("sum",    0) for d in days)
+                atc    = sum(d.get("atbs",   0) for d in days)
+                orders = sum(d.get("orders", 0) for d in days)
+                ctr    = round(clicks / views * 100, 2) if views > 0 else 0.0
 
-        name = (detail.get("settings") or {}).get("name") or f"Кампания {cid}"
+                name   = (detail.get("settings") or {}).get("name") or f"Кампания {cid}"
+                status = STATUS_LABELS.get(detail.get("status", 0), "—")
 
-        final_results.append({
-            "id":     cid,
-            "name":   name,
-            "status": STATUS_LABELS.get(detail.get("status", 0), f"Статус {detail.get('status', 0)}"),
-            "views":  views,
-            "clicks": clicks,
-            "ctr":    ctr,
-            "sum":    round(spend, 2),
-            "atc":    atc,
-            "orders": orders,
-            "date":   today_str,
-        })
-
-    final_results.sort(key=lambda x: (0 if "Идет" in x["status"] else 1, -x["views"]))
-
-    result = {"status": "success", "campaigns": final_results}
-    cache_set(cache_key, result)
-    return result
+                cur.execute("""
+                    INSERT INTO adv_stats (date, campaign_id, name, status, views, clicks, ctr, spend, atc, orders, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
+                    ON CONFLICT (date, campaign_id) DO UPDATE SET
+                        name       = EXCLUDED.name,
+                        status     = EXCLUDED.status,
+                        views      = EXCLUDED.views,
+                        clicks     = EXCLUDED.clicks,
+                        ctr        = EXCLUDED.ctr,
+                        spend      = EXCLUDED.spend,
+                        atc        = EXCLUDED.atc,
+                        orders     = EXCLUDED.orders,
+                        updated_at = now()
+                """, (today, cid, name, status, views, clicks, round(spend, 2), ctr, atc, orders))
+        conn.commit()
+    print(f"[Scheduler] Реклама сохранена: {len(all_ids)} кампаний")
 
 
-# Ручной сброс кэша (если нужно обновить раньше 30 минут)
-@app.post("/cache/clear")
-def clear_cache():
-    _cache.clear()
-    print("[CACHE] Очищен вручную")
-    return {"status": "ok", "message": "Кэш очищен"}
+def collect_all():
+    collect_sales()
+    collect_adv()
+
+
+# ─── API endpoints ────────────────────────────────────────────────────
+
+@app.get("/stats")
+def get_stats():
+    now         = datetime.now(MSK)
+    today       = now.strftime("%Y-%m-%d")
+    yesterday   = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+    this_monday = (now - timedelta(days=now.weekday())).strftime("%Y-%m-%d")
+    last_monday = (now - timedelta(days=now.weekday() + 7)).strftime("%Y-%m-%d")
+    last_sunday = (now - timedelta(days=now.weekday() + 1)).strftime("%Y-%m-%d")
+
+    def empty():
+        return {"count": 0, "rev": 0}
+
+    def row_to_dict(row, key_count, key_rev):
+        if not row:
+            return empty()
+        return {"count": row[key_count] or 0, "rev": row[key_rev] or 0}
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # Сегодня и вчера — одним запросом
+            cur.execute("SELECT * FROM daily_stats WHERE date IN (%s, %s)", (today, yesterday))
+            rows = {str(r["date"]): r for r in cur.fetchall()}
+
+            today_row     = rows.get(today)
+            yesterday_row = rows.get(yesterday)
+
+            # Эта неделя (пн — сегодня)
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(orders_count),0) AS orders_count,
+                    COALESCE(SUM(orders_rev),  0) AS orders_rev,
+                    COALESCE(SUM(sales_count), 0) AS sales_count,
+                    COALESCE(SUM(sales_rev),   0) AS sales_rev,
+                    MIN(date)::text AS date_from,
+                    MAX(date)::text AS date_to
+                FROM daily_stats WHERE date >= %s AND date <= %s
+            """, (this_monday, today))
+            tw = cur.fetchone()
+
+            # Прошлая неделя (пн — вс)
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(orders_count),0) AS orders_count,
+                    COALESCE(SUM(orders_rev),  0) AS orders_rev,
+                    COALESCE(SUM(sales_count), 0) AS sales_count,
+                    COALESCE(SUM(sales_rev),   0) AS sales_rev,
+                    MIN(date)::text AS date_from,
+                    MAX(date)::text AS date_to
+                FROM daily_stats WHERE date >= %s AND date <= %s
+            """, (last_monday, last_sunday))
+            lw = cur.fetchone()
+
+    return {
+        "today": {
+            "orders": row_to_dict(today_row, "orders_count", "orders_rev"),
+            "sales":  row_to_dict(today_row, "sales_count",  "sales_rev"),
+        },
+        "yesterday": {
+            "orders": row_to_dict(yesterday_row, "orders_count", "orders_rev"),
+            "sales":  row_to_dict(yesterday_row, "sales_count",  "sales_rev"),
+        },
+        "this_week": {
+            "orders": {"count": int(tw["orders_count"]), "rev": int(tw["orders_rev"])},
+            "sales":  {"count": int(tw["sales_count"]),  "rev": int(tw["sales_rev"])},
+            "from":   tw["date_from"] or this_monday,
+            "to":     tw["date_to"]   or today,
+        },
+        "last_week": {
+            "orders": {"count": int(lw["orders_count"]), "rev": int(lw["orders_rev"])},
+            "sales":  {"count": int(lw["sales_count"]),  "rev": int(lw["sales_rev"])},
+            "from":   lw["date_from"] or last_monday,
+            "to":     lw["date_to"]   or last_sunday,
+        },
+    }
+
+
+@app.get("/adv")
+def get_adv():
+    today = datetime.now(MSK).strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT campaign_id AS id, name, status,
+                       views, clicks, ctr, spend AS sum, atc, orders,
+                       date::text AS date
+                FROM adv_stats
+                WHERE date = %s
+                ORDER BY views DESC
+            """, (today,))
+            rows = cur.fetchall()
+
+    campaigns = [dict(r) for r in rows]
+    return {"status": "success", "campaigns": campaigns}
+
+
+# История статистики за N дней (для будущих графиков)
+@app.get("/stats/history")
+def get_stats_history(days: int = 30):
+    date_from = (datetime.now(MSK) - timedelta(days=days)).strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT date::text, orders_count, orders_rev, sales_count, sales_rev
+                FROM daily_stats
+                WHERE date >= %s
+                ORDER BY date
+            """, (date_from,))
+            rows = cur.fetchall()
+    return {"days": days, "data": [dict(r) for r in rows]}
+
+
+# Ручной запуск сбора (для теста без ожидания часа)
+@app.post("/collect")
+def manual_collect():
+    collect_all()
+    return {"status": "ok", "message": "Сбор данных запущен"}
+
+
+# ─── Старт ────────────────────────────────────────────────────────────
+
+@app.on_event("startup")
+def startup():
+    init_db()
+
+    # Сразу собираем данные при старте
+    collect_all()
+
+    # Планировщик — каждый час
+    scheduler = BackgroundScheduler(timezone=MSK)
+    scheduler.add_job(collect_all, "interval", hours=1)
+    scheduler.start()
+    print("[Scheduler] Запущен, следующий сбор через 1 час")
 
 
 if __name__ == "__main__":
