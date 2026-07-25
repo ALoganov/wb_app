@@ -175,6 +175,7 @@ def collect_adv():
                 views  = sum(d.get("views",  0) for d in days)
                 clicks = sum(d.get("clicks", 0) for d in days)
                 spend  = sum(d.get("sum",    0) for d in days)
+                print(f"[DEBUG] campaign={cid} spend_raw={spend} days_count={len(days)}")
                 atc    = sum(d.get("atbs",   0) for d in days)
                 orders = sum(d.get("orders", 0) for d in days)
                 ctr    = round(clicks / views * 100, 2) if views > 0 else 0.0
