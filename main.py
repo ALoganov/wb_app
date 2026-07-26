@@ -328,72 +328,92 @@ def get_adv():
     with get_conn() as conn:
         with conn.cursor() as cur:
 
-            # Сегодня — по каждой кампании
+            # Активные кампании сегодня
             cur.execute("""
-                SELECT campaign_id AS id, name, status,
-                       views, clicks, ctr, spend AS sum, atc, orders,
-                       date::text AS date
-                FROM adv_stats
-                WHERE date = %s
-                ORDER BY views DESC
+                SELECT campaign_id FROM adv_stats WHERE date = %s
             """, (today,))
-            today_rows = [dict(r) for r in cur.fetchall()]
+            campaign_ids = [r["campaign_id"] for r in cur.fetchall()]
 
-            # Эта неделя — суммарно по всем кампаниям
-            cur.execute("""
-                SELECT
-                    COALESCE(SUM(views),  0)::int          AS views,
-                    COALESCE(SUM(clicks), 0)::int          AS clicks,
-                    COALESCE(SUM(spend),  0)::numeric      AS spend,
-                    COALESCE(SUM(atc),    0)::int          AS atc,
-                    COALESCE(SUM(orders), 0)::int          AS orders,
-                    MIN(date)::text                        AS date_from,
-                    MAX(date)::text                        AS date_to
-                FROM adv_stats WHERE date >= %s AND date <= %s
-            """, (this_monday, today))
-            tw = cur.fetchone()
+            if not campaign_ids:
+                return {"status": "success", "campaigns": []}
 
-            # Прошлая неделя
-            cur.execute("""
-                SELECT
-                    COALESCE(SUM(views),  0)::int          AS views,
-                    COALESCE(SUM(clicks), 0)::int          AS clicks,
-                    COALESCE(SUM(spend),  0)::numeric      AS spend,
-                    COALESCE(SUM(atc),    0)::int          AS atc,
-                    COALESCE(SUM(orders), 0)::int          AS orders,
-                    MIN(date)::text                        AS date_from,
-                    MAX(date)::text                        AS date_to
-                FROM adv_stats WHERE date >= %s AND date <= %s
-            """, (last_monday, last_sunday))
-            lw = cur.fetchone()
+            result = []
+            for cid in campaign_ids:
 
-    def week_ctr(row):
-        return round(row["clicks"] / row["views"] * 100, 2) if row["views"] > 0 else 0.0
+                # Сегодня
+                cur.execute("""
+                    SELECT name, status, views, clicks, ctr, spend AS sum, atc, orders, date::text AS date
+                    FROM adv_stats WHERE date = %s AND campaign_id = %s
+                """, (today, cid))
+                today_row = dict(cur.fetchone() or {})
 
-    return {
-        "status": "success",
-        "campaigns": today_rows,
-        "this_week": {
-            "views":  tw["views"],
-            "clicks": tw["clicks"],
-            "ctr":    week_ctr(tw),
-            "spend":  float(tw["spend"]),
-            "atc":    tw["atc"],
-            "orders": tw["orders"],
-            "from":   tw["date_from"] or this_monday,
-            "to":     tw["date_to"]   or today,
-        },
-        "last_week": {
-            "views":  lw["views"],
-            "clicks": lw["clicks"],
-            "ctr":    week_ctr(lw),
-            "spend":  float(lw["spend"]),
-            "atc":    lw["atc"],
-            "orders": lw["orders"],
-            "from":   lw["date_from"] or last_monday,
-            "to":     lw["date_to"]   or last_sunday,
-        },
-    }
+                # Эта неделя
+                cur.execute("""
+                    SELECT
+                        COALESCE(SUM(views),  0)::int     AS views,
+                        COALESCE(SUM(clicks), 0)::int     AS clicks,
+                        COALESCE(SUM(spend),  0)::numeric AS spend,
+                        COALESCE(SUM(atc),    0)::int     AS atc,
+                        COALESCE(SUM(orders), 0)::int     AS orders,
+                        MIN(date)::text AS date_from,
+                        MAX(date)::text AS date_to
+                    FROM adv_stats WHERE campaign_id = %s AND date >= %s AND date <= %s
+                """, (cid, this_monday, today))
+                tw = dict(cur.fetchone())
+
+                # Прошлая неделя
+                cur.execute("""
+                    SELECT
+                        COALESCE(SUM(views),  0)::int     AS views,
+                        COALESCE(SUM(clicks), 0)::int     AS clicks,
+                        COALESCE(SUM(spend),  0)::numeric AS spend,
+                        COALESCE(SUM(atc),    0)::int     AS atc,
+                        COALESCE(SUM(orders), 0)::int     AS orders,
+                        MIN(date)::text AS date_from,
+                        MAX(date)::text AS date_to
+                    FROM adv_stats WHERE campaign_id = %s AND date >= %s AND date <= %s
+                """, (cid, last_monday, last_sunday))
+                lw = dict(cur.fetchone())
+
+                def week_ctr(row):
+                    return round(row["clicks"] / row["views"] * 100, 2) if row["views"] > 0 else 0.0
+
+                result.append({
+                    "id":     cid,
+                    "name":   today_row.get("name", f"Кампания {cid}"),
+                    "status": today_row.get("status", "—"),
+                    "date":   today_row.get("date", today),
+                    "today": {
+                        "views":  today_row.get("views", 0),
+                        "clicks": today_row.get("clicks", 0),
+                        "ctr":    today_row.get("ctr", 0),
+                        "spend":  float(today_row.get("sum", 0)),
+                        "atc":    today_row.get("atc", 0),
+                        "orders": today_row.get("orders", 0),
+                    },
+                    "this_week": {
+                        "views":  tw["views"],
+                        "clicks": tw["clicks"],
+                        "ctr":    week_ctr(tw),
+                        "spend":  float(tw["spend"]),
+                        "atc":    tw["atc"],
+                        "orders": tw["orders"],
+                        "from":   tw["date_from"] or this_monday,
+                        "to":     tw["date_to"]   or today,
+                    },
+                    "last_week": {
+                        "views":  lw["views"],
+                        "clicks": lw["clicks"],
+                        "ctr":    week_ctr(lw),
+                        "spend":  float(lw["spend"]),
+                        "atc":    lw["atc"],
+                        "orders": lw["orders"],
+                        "from":   lw["date_from"] or last_monday,
+                        "to":     lw["date_to"]   or last_sunday,
+                    },
+                })
+
+    return {"status": "success", "campaigns": result}
 
 
 # История статистики за N дней (для будущих графиков)
