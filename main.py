@@ -196,7 +196,7 @@ def collect_adv():
                         atc        = EXCLUDED.atc,
                         orders     = EXCLUDED.orders,
                         updated_at = now()
-                """, (today, cid, name, status, views, clicks, round(spend, 2), ctr, atc, orders))
+                """, (today, cid, name, status, views, clicks, ctr, round(spend, 2), atc, orders))
         conn.commit()
     print(f"[Scheduler] Реклама сохранена: {len(all_ids)} кампаний")
 
