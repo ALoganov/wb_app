@@ -174,8 +174,39 @@
 
 <!-- РЕКЛАМА -->
 <div id="adv-content" class="content" style="display:none">
+
+    <!-- Недельная сводка -->
+    <div class="card">
+        <div class="period-label">
+            Эта неделя
+            <span class="period-sub" id="adv-tw-range"></span>
+        </div>
+        <div class="adv-grid">
+            <div class="adv-metric"><span>Просмотры</span><span class="adv-val" id="adv-tw-views">0</span></div>
+            <div class="adv-metric"><span>Клики</span><span class="adv-val" id="adv-tw-clicks">0</span></div>
+            <div class="adv-metric"><span>CTR</span><span class="adv-val" id="adv-tw-ctr">0%</span></div>
+            <div class="adv-metric"><span>Расход</span><span class="adv-val" id="adv-tw-spend">0 ₽</span></div>
+            <div class="adv-metric"><span>Корзины</span><span class="adv-val" id="adv-tw-atc">0</span></div>
+            <div class="adv-metric"><span>Заказы</span><span class="adv-val" id="adv-tw-orders">0</span></div>
+        </div>
+        <hr class="divider">
+        <div class="period-label" style="opacity:0.8">
+            Прошлая неделя
+            <span class="period-sub" id="adv-lw-range"></span>
+        </div>
+        <div class="adv-grid" style="opacity:0.8">
+            <div class="adv-metric"><span>Просмотры</span><span class="adv-val" id="adv-lw-views">0</span></div>
+            <div class="adv-metric"><span>Клики</span><span class="adv-val" id="adv-lw-clicks">0</span></div>
+            <div class="adv-metric"><span>CTR</span><span class="adv-val" id="adv-lw-ctr">0%</span></div>
+            <div class="adv-metric"><span>Расход</span><span class="adv-val" id="adv-lw-spend">0 ₽</span></div>
+            <div class="adv-metric"><span>Корзины</span><span class="adv-val" id="adv-lw-atc">0</span></div>
+            <div class="adv-metric"><span>Заказы</span><span class="adv-val" id="adv-lw-orders">0</span></div>
+        </div>
+    </div>
+
+    <!-- Кампании за сегодня -->
     <div class="card" id="adv-list">
-        <div class="period-label">Рекламные кампании</div>
+        <div class="period-label">Кампании сегодня</div>
         <div id="adv-items-container"></div>
     </div>
 </div>
@@ -260,8 +291,29 @@
         try {
             const r = await fetch(`${BASE_URL}/adv`);
             const d = await r.json();
-            let html = '';
 
+            // Эта неделя
+            const tw = d.this_week;
+            document.getElementById('adv-tw-views').innerText  = tw.views.toLocaleString();
+            document.getElementById('adv-tw-clicks').innerText = tw.clicks.toLocaleString();
+            document.getElementById('adv-tw-ctr').innerText    = tw.ctr + '%';
+            document.getElementById('adv-tw-spend').innerText  = tw.spend.toLocaleString() + ' ₽';
+            document.getElementById('adv-tw-atc').innerText    = tw.atc.toLocaleString();
+            document.getElementById('adv-tw-orders').innerText = tw.orders.toLocaleString();
+            document.getElementById('adv-tw-range').innerText  = `${fmt(tw.from)} – ${fmt(tw.to)}`;
+
+            // Прошлая неделя
+            const lw = d.last_week;
+            document.getElementById('adv-lw-views').innerText  = lw.views.toLocaleString();
+            document.getElementById('adv-lw-clicks').innerText = lw.clicks.toLocaleString();
+            document.getElementById('adv-lw-ctr').innerText    = lw.ctr + '%';
+            document.getElementById('adv-lw-spend').innerText  = lw.spend.toLocaleString() + ' ₽';
+            document.getElementById('adv-lw-atc').innerText    = lw.atc.toLocaleString();
+            document.getElementById('adv-lw-orders').innerText = lw.orders.toLocaleString();
+            document.getElementById('adv-lw-range').innerText  = `${fmt(lw.from)} – ${fmt(lw.to)}`;
+
+            // Кампании сегодня
+            let html = '';
             if (d.campaigns && d.campaigns.length > 0) {
                 d.campaigns.forEach(c => {
                     html += `
@@ -283,11 +335,11 @@
                         <div style="font-size:9px; color:var(--hint); margin-top:8px;">Период: ${c.date}</div>
                     </div>`;
                 });
-                cachedAdv = d;
             } else {
                 html = '<p style="font-size:13px; color:var(--hint); text-align:center; padding:20px;">Нет активных кампаний</p>';
             }
             container.innerHTML = html;
+            cachedAdv = d;
         } catch(e) {
             container.innerHTML = '<p style="text-align:center; color:red;">Ошибка загрузки рекламы</p>';
         } finally {
