@@ -328,9 +328,10 @@ def get_adv():
     with get_conn() as conn:
         with conn.cursor() as cur:
 
-            # Активные кампании сегодня
+            # Только активные кампании сегодня
             cur.execute("""
-                SELECT campaign_id FROM adv_stats WHERE date = %s
+                SELECT campaign_id FROM adv_stats
+                WHERE date = %s AND status = 'Идет показ'
             """, (today,))
             campaign_ids = [r["campaign_id"] for r in cur.fetchall()]
 
