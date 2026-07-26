@@ -119,27 +119,18 @@ def collect_sales():
 
 # ─── Сборщик рекламной статистики ─────────────────────────────────────
 
-def collect_adv():
-    print("[Scheduler] Сбор рекламной статистики...")
-    headers = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
-    today = datetime.now(MSK).strftime("%Y-%m-%d")
-
+def _get_active_campaign_ids(headers):
     count_data = fetch_wb("https://advert-api.wildberries.ru/adv/v1/promotion/count", headers)
     if not count_data:
-        print("[Scheduler] Не удалось получить список кампаний")
-        return
-
-    all_ids = []
+        return []
+    ids = []
     for group in count_data.get("adverts", []):
         if group.get("status") == 9:
             for advert in group.get("advert_list", []):
-                all_ids.append(advert["advertId"])
+                ids.append(advert["advertId"])
+    return ids
 
-    if not all_ids:
-        print("[Scheduler] Нет активных кампаний")
-        return
-
-    # Детали
+def _get_details_map(headers, all_ids):
     details_map = {}
     for i in range(0, len(all_ids), 50):
         chunk = all_ids[i:i+50]
@@ -152,12 +143,14 @@ def collect_adv():
         if res.status_code == 200:
             for d in (res.json().get("adverts") or []):
                 details_map[d["id"]] = d
+    return details_map
 
-    # Статистика
+def _save_adv_for_date(headers, all_ids, details_map, date_str):
+    """Собирает и сохраняет статистику рекламы за конкретный день."""
     stats_res = requests.get(
         "https://advert-api.wildberries.ru/adv/v3/fullstats",
         headers=headers,
-        params={"ids": ",".join(str(x) for x in all_ids), "beginDate": today, "endDate": today},
+        params={"ids": ",".join(str(x) for x in all_ids), "beginDate": date_str, "endDate": date_str},
         timeout=15,
     )
     stats_raw = stats_res.json() if stats_res.status_code == 200 else []
@@ -175,11 +168,9 @@ def collect_adv():
                 views  = sum(d.get("views",  0) for d in days)
                 clicks = sum(d.get("clicks", 0) for d in days)
                 spend  = sum(d.get("sum",    0) for d in days)
-                print(f"[DEBUG] campaign={cid} spend_raw={spend} days_count={len(days)}")
                 atc    = sum(d.get("atbs",   0) for d in days)
                 orders = sum(d.get("orders", 0) for d in days)
                 ctr    = round(clicks / views * 100, 2) if views > 0 else 0.0
-
                 name   = (detail.get("settings") or {}).get("name") or f"Кампания {cid}"
                 status = STATUS_LABELS.get(detail.get("status", 0), "—")
 
@@ -196,9 +187,37 @@ def collect_adv():
                         atc        = EXCLUDED.atc,
                         orders     = EXCLUDED.orders,
                         updated_at = now()
-                """, (today, cid, name, status, views, clicks, ctr, round(spend, 2), atc, orders))
+                """, (date_str, cid, name, status, views, clicks, ctr, round(spend, 2), atc, orders))
         conn.commit()
-    print(f"[Scheduler] Реклама сохранена: {len(all_ids)} кампаний")
+    print(f"[Scheduler] Реклама за {date_str} сохранена")
+
+def collect_adv():
+    """Ежечасный сбор — только сегодня."""
+    print("[Scheduler] Сбор рекламной статистики (сегодня)...")
+    headers  = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
+    all_ids  = _get_active_campaign_ids(headers)
+    if not all_ids:
+        print("[Scheduler] Нет активных кампаний")
+        return
+    details_map = _get_details_map(headers, all_ids)
+    today = datetime.now(MSK).strftime("%Y-%m-%d")
+    _save_adv_for_date(headers, all_ids, details_map, today)
+    print(f"[Scheduler] Готово: {len(all_ids)} кампаний")
+
+def collect_adv_history(days_back: int = 14):
+    """Однократная загрузка истории рекламы за N дней."""
+    print(f"[History] Загрузка рекламы за {days_back} дней...")
+    headers     = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
+    all_ids     = _get_active_campaign_ids(headers)
+    if not all_ids:
+        print("[History] Нет активных кампаний")
+        return
+    details_map = _get_details_map(headers, all_ids)
+    now = datetime.now(MSK)
+    for i in range(days_back, -1, -1):
+        date_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        _save_adv_for_date(headers, all_ids, details_map, date_str)
+    print(f"[History] Загрузка завершена")
 
 
 def collect_all():
@@ -384,6 +403,12 @@ def get_stats_history(days: int = 30):
 def manual_collect():
     collect_all()
     return {"status": "ok", "message": "Сбор данных запущен"}
+
+# Загрузка истории рекламы (вызвать один раз вручную)
+@app.post("/collect/adv-history")
+def manual_adv_history(days_back: int = 14):
+    collect_adv_history(days_back)
+    return {"status": "ok", "message": f"История рекламы за {days_back} дней загружена"}
 
 
 # ─── Старт ────────────────────────────────────────────────────────────
