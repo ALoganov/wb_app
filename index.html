@@ -293,24 +293,24 @@
             const d = await r.json();
 
             // Эта неделя
-            const tw = d.this_week;
+            const tw = d.this_week || {views:0,clicks:0,ctr:0,spend:0,atc:0,orders:0,from:'',to:''};
             document.getElementById('adv-tw-views').innerText  = tw.views.toLocaleString();
             document.getElementById('adv-tw-clicks').innerText = tw.clicks.toLocaleString();
             document.getElementById('adv-tw-ctr').innerText    = tw.ctr + '%';
             document.getElementById('adv-tw-spend').innerText  = tw.spend.toLocaleString() + ' ₽';
             document.getElementById('adv-tw-atc').innerText    = tw.atc.toLocaleString();
             document.getElementById('adv-tw-orders').innerText = tw.orders.toLocaleString();
-            document.getElementById('adv-tw-range').innerText  = `${fmt(tw.from)} – ${fmt(tw.to)}`;
+            document.getElementById('adv-tw-range').innerText  = tw.from ? `${fmt(tw.from)} – ${fmt(tw.to)}` : '';
 
             // Прошлая неделя
-            const lw = d.last_week;
+            const lw = d.last_week || {views:0,clicks:0,ctr:0,spend:0,atc:0,orders:0,from:'',to:''};
             document.getElementById('adv-lw-views').innerText  = lw.views.toLocaleString();
             document.getElementById('adv-lw-clicks').innerText = lw.clicks.toLocaleString();
             document.getElementById('adv-lw-ctr').innerText    = lw.ctr + '%';
             document.getElementById('adv-lw-spend').innerText  = lw.spend.toLocaleString() + ' ₽';
             document.getElementById('adv-lw-atc').innerText    = lw.atc.toLocaleString();
             document.getElementById('adv-lw-orders').innerText = lw.orders.toLocaleString();
-            document.getElementById('adv-lw-range').innerText  = `${fmt(lw.from)} – ${fmt(lw.to)}`;
+            document.getElementById('adv-lw-range').innerText  = lw.from ? `${fmt(lw.from)} – ${fmt(lw.to)}` : '';
 
             // Кампании сегодня
             let html = '';
