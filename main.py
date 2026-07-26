@@ -439,8 +439,19 @@ def manual_collect():
     collect_all()
     return {"status": "ok", "message": "Сбор данных запущен"}
 
-# Загрузка истории рекламы (вызвать один раз вручную)
-@app.post("/collect/adv-history")
+# Отладка — посмотреть что в БД за период
+@app.get("/debug/adv")
+def debug_adv(campaign_id: int, date_from: str = "2026-07-13", date_to: str = "2026-07-26"):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT date::text, views, clicks, spend, orders
+                FROM adv_stats
+                WHERE campaign_id = %s AND date >= %s AND date <= %s
+                ORDER BY date
+            """, (campaign_id, date_from, date_to))
+            rows = [dict(r) for r in cur.fetchall()]
+    return {"campaign_id": campaign_id, "rows": rows}
 def manual_adv_history(days_back: int = 14):
     collect_adv_history(days_back)
     return {"status": "ok", "message": f"История рекламы за {days_back} дней загружена"}
