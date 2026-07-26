@@ -205,18 +205,32 @@ def collect_adv():
     print(f"[Scheduler] Готово: {len(all_ids)} кампаний")
 
 def collect_adv_history(days_back: int = 14):
-    """Однократная загрузка истории рекламы за N дней."""
+    """Однократная загрузка истории рекламы за N дней — все кампании."""
     print(f"[History] Загрузка рекламы за {days_back} дней...")
-    headers     = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
-    all_ids     = _get_active_campaign_ids(headers)
-    if not all_ids:
-        print("[History] Нет активных кампаний")
+    headers = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
+
+    # Берём ВСЕ кампании (любой статус) для истории
+    count_data = fetch_wb("https://advert-api.wildberries.ru/adv/v1/promotion/count", headers)
+    if not count_data:
+        print("[History] Не удалось получить список кампаний")
         return
+    all_ids = []
+    for group in count_data.get("adverts", []):
+        for advert in group.get("advert_list", []):
+            all_ids.append(advert["advertId"])
+
+    if not all_ids:
+        print("[History] Кампании не найдены")
+        return
+
+    print(f"[History] Найдено кампаний: {len(all_ids)}")
     details_map = _get_details_map(headers, all_ids)
+
     now = datetime.now(MSK)
     for i in range(days_back, -1, -1):
         date_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
         _save_adv_for_date(headers, all_ids, details_map, date_str)
+
     print(f"[History] Загрузка завершена")
 
 
