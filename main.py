@@ -147,13 +147,18 @@ def _get_details_map(headers, all_ids):
 
 def _save_adv_for_date(headers, all_ids, details_map, date_str):
     """Собирает и сохраняет статистику рекламы за конкретный день."""
-    stats_res = requests.get(
-        "https://advert-api.wildberries.ru/adv/v3/fullstats",
+    payload = [
+        {"id": cid, "interval": {"begin": date_str, "end": date_str}}
+        for cid in all_ids
+    ]
+    stats_res = requests.post(
+        "https://advert-api.wb.ru/adv/v2/fullstats",
         headers=headers,
-        params={"ids": ",".join(str(x) for x in all_ids), "beginDate": date_str, "endDate": date_str},
+        json=payload,
         timeout=15,
     )
     stats_raw = stats_res.json() if stats_res.status_code == 200 else []
+    print(f"[Adv] {date_str} — статус {stats_res.status_code}, записей: {len(stats_raw) if isinstance(stats_raw, list) else 0}")
     stats_map = {item["advertId"]: item for item in (stats_raw if isinstance(stats_raw, list) else [])}
 
     STATUS_LABELS = {4: "Готова к запуску", 7: "Завершена", 8: "Отказалась", 9: "Идет показ", 11: "Приостановлена"}
