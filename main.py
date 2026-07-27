@@ -496,6 +496,9 @@ def debug_adv_raw(date_str: str = "2026-07-26"):
         "get_v3": {"status": r1.status_code, "body": r1.json() if r1.status_code == 200 else r1.text[:300]},
         "post_v2": {"status": r2.status_code, "body": r2.json() if r2.status_code == 200 else r2.text[:300]},
     }
+
+# Загрузка истории рекламы (вызвать один раз вручную)
+@app.post("/collect/adv-history")
 def manual_adv_history(days_back: int = 14):
     collect_adv_history(days_back)
     return {"status": "ok", "message": f"История рекламы за {days_back} дней загружена"}
