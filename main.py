@@ -473,8 +473,33 @@ def manual_collect():
     collect_all()
     return {"status": "ok", "message": "Сбор данных запущен"}
 
-# Загрузка истории рекламы (вызвать один раз вручную)
-@app.post("/collect/adv-history")
+# Отладка — смотрим сырой ответ WB за конкретную дату
+@app.get("/debug/adv-raw")
+def debug_adv_raw(date_str: str = "2026-07-26"):
+    headers = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
+    all_ids = [27952577, 37500276]
+
+    # Тест 1: GET /adv/v3/fullstats
+    r1 = requests.get(
+        "https://advert-api.wildberries.ru/adv/v3/fullstats",
+        headers=headers,
+        params={"ids": ",".join(str(x) for x in all_ids), "beginDate": date_str, "endDate": date_str},
+        timeout=15,
+    )
+
+    # Тест 2: POST /adv/v2/fullstats с interval
+    payload = [{"id": cid, "interval": {"begin": date_str, "end": date_str}} for cid in all_ids]
+    r2 = requests.post(
+        "https://advert-api.wildberries.ru/adv/v2/fullstats",
+        headers=headers,
+        json=payload,
+        timeout=15,
+    )
+
+    return {
+        "get_v3": {"status": r1.status_code, "body": r1.json() if r1.status_code == 200 else r1.text[:300]},
+        "post_v2": {"status": r2.status_code, "body": r2.json() if r2.status_code == 200 else r2.text[:300]},
+    }
 def manual_adv_history(days_back: int = 14):
     collect_adv_history(days_back)
     return {"status": "ok", "message": f"История рекламы за {days_back} дней загружена"}
