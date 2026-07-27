@@ -438,25 +438,43 @@ def get_stats_history(days: int = 30):
     return {"days": days, "data": [dict(r) for r in rows]}
 
 
+def collect_adv_history(days_back: int = 14):
+    """Однократная загрузка истории рекламы за N дней — все кампании."""
+    print(f"[History] Загрузка рекламы за {days_back} дней...")
+    headers = {"Authorization": WB_TOKEN, "Content-Type": "application/json"}
+
+    count_data = fetch_wb("https://advert-api.wildberries.ru/adv/v1/promotion/count", headers)
+    if not count_data:
+        print("[History] Не удалось получить список кампаний")
+        return
+    all_ids = []
+    for group in count_data.get("adverts", []):
+        for advert in group.get("advert_list", []):
+            all_ids.append(advert["advertId"])
+
+    if not all_ids:
+        print("[History] Кампании не найдены")
+        return
+
+    print(f"[History] Найдено кампаний: {len(all_ids)}")
+    details_map = _get_details_map(headers, all_ids)
+
+    now = datetime.now(MSK)
+    for i in range(days_back, -1, -1):
+        date_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        _save_adv_for_date(headers, all_ids, details_map, date_str)
+
+    print("[History] Загрузка завершена")
+
+
 # Ручной запуск сбора (для теста без ожидания часа)
 @app.post("/collect")
 def manual_collect():
     collect_all()
     return {"status": "ok", "message": "Сбор данных запущен"}
 
-# Отладка — посмотреть что в БД за период
-@app.get("/debug/adv")
-def debug_adv(campaign_id: int, date_from: str = "2026-07-13", date_to: str = "2026-07-26"):
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT date::text, views, clicks, spend, orders
-                FROM adv_stats
-                WHERE campaign_id = %s AND date >= %s AND date <= %s
-                ORDER BY date
-            """, (campaign_id, date_from, date_to))
-            rows = [dict(r) for r in cur.fetchall()]
-    return {"campaign_id": campaign_id, "rows": rows}
+# Загрузка истории рекламы (вызвать один раз вручную)
+@app.post("/collect/adv-history")
 def manual_adv_history(days_back: int = 14):
     collect_adv_history(days_back)
     return {"status": "ok", "message": f"История рекламы за {days_back} дней загружена"}
