@@ -152,7 +152,7 @@ def _save_adv_for_date(headers, all_ids, details_map, date_str):
         for cid in all_ids
     ]
     stats_res = requests.post(
-        "https://advert-api.wb.ru/adv/v2/fullstats",
+        "https://advert-api.wildberries.ru/adv/v2/fullstats",
         headers=headers,
         json=payload,
         timeout=15,
