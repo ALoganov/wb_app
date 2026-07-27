@@ -147,14 +147,10 @@ def _get_details_map(headers, all_ids):
 
 def _save_adv_for_date(headers, all_ids, details_map, date_str):
     """Собирает и сохраняет статистику рекламы за конкретный день."""
-    payload = [
-        {"id": cid, "interval": {"begin": date_str, "end": date_str}}
-        for cid in all_ids
-    ]
-    stats_res = requests.post(
-        "https://advert-api.wildberries.ru/adv/v2/fullstats",
+    stats_res = requests.get(
+        "https://advert-api.wildberries.ru/adv/v3/fullstats",
         headers=headers,
-        json=payload,
+        params={"ids": ",".join(str(x) for x in all_ids), "beginDate": date_str, "endDate": date_str},
         timeout=15,
     )
     stats_raw = stats_res.json() if stats_res.status_code == 200 else []
@@ -185,16 +181,16 @@ def _save_adv_for_date(headers, all_ids, details_map, date_str):
                     ON CONFLICT (date, campaign_id) DO UPDATE SET
                         name       = EXCLUDED.name,
                         status     = EXCLUDED.status,
-                        views      = EXCLUDED.views,
-                        clicks     = EXCLUDED.clicks,
-                        ctr        = EXCLUDED.ctr,
-                        spend      = EXCLUDED.spend,
-                        atc        = EXCLUDED.atc,
-                        orders     = EXCLUDED.orders,
+                        views      = GREATEST(adv_stats.views,  EXCLUDED.views),
+                        clicks     = GREATEST(adv_stats.clicks, EXCLUDED.clicks),
+                        ctr        = CASE WHEN EXCLUDED.views > adv_stats.views THEN EXCLUDED.ctr ELSE adv_stats.ctr END,
+                        spend      = GREATEST(adv_stats.spend,  EXCLUDED.spend),
+                        atc        = GREATEST(adv_stats.atc,    EXCLUDED.atc),
+                        orders     = GREATEST(adv_stats.orders, EXCLUDED.orders),
                         updated_at = now()
                 """, (date_str, cid, name, status, views, clicks, ctr, round(spend, 2), atc, orders))
         conn.commit()
-    print(f"[Scheduler] Реклама за {date_str} сохранена")
+    print(f"[Adv] {date_str} сохранено")
 
 def collect_adv():
     """Ежечасный сбор — только сегодня."""
