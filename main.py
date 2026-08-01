@@ -242,6 +242,12 @@ def collect_all():
 
 # ─── API endpoints ────────────────────────────────────────────────────
 
+# Лёгкий healthcheck для внешнего пинга (не трогает БД и WB)
+@app.get("/health")
+def health():
+    return {"status": "ok", "time": datetime.now(MSK).isoformat()}
+
+
 @app.get("/stats")
 def get_stats():
     now         = datetime.now(MSK)
