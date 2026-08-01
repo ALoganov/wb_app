@@ -469,6 +469,20 @@ def manual_collect():
     collect_all()
     return {"status": "ok", "message": "Сбор данных запущен"}
 
+# Отладка — посмотреть что сохранено в БД за период
+@app.get("/debug/adv")
+def debug_adv(campaign_id: int, date_from: str = "2026-07-13", date_to: str = "2026-08-01"):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT date::text, views, clicks, ctr, spend, atc, orders, updated_at
+                FROM adv_stats
+                WHERE campaign_id = %s AND date >= %s AND date <= %s
+                ORDER BY date
+            """, (campaign_id, date_from, date_to))
+            rows = [dict(r) for r in cur.fetchall()]
+    return {"campaign_id": campaign_id, "rows": rows}
+
 # Отладка — смотрим сырой ответ WB за конкретную дату
 @app.get("/debug/adv-raw")
 def debug_adv_raw(date_str: str = "2026-07-26"):
